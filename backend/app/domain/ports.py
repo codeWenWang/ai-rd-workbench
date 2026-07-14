@@ -17,6 +17,7 @@ from app.domain.entities import (
     Message,
     ModelMessage,
     MessageStatus,
+    Project,
     ResourceStatus,
     ResourceType,
     RetrievalResult,
@@ -35,7 +36,7 @@ UNSET: Final[_UnsetType] = _UnsetType()
 
 
 class ConversationRepository(Protocol):
-    def create(self, title: str) -> Conversation: ...
+    def create(self, title: str, project_id: str | None = None) -> Conversation: ...
 
     def get(self, conversation_id: str) -> Conversation | None: ...
 
@@ -43,6 +44,7 @@ class ConversationRepository(Protocol):
         self,
         *,
         include_archived: bool = False,
+        project_id: str | None = None,
         offset: int = 0,
         limit: int = 100,
     ) -> list[Conversation]: ...
@@ -75,6 +77,22 @@ class ConversationRepository(Protocol):
     ) -> Message: ...
 
     def list_messages(self, conversation_id: str) -> list[Message]: ...
+
+
+class ProjectRepository(Protocol):
+    def create(
+        self,
+        *,
+        name: str,
+        root_path: str,
+        source_type: str = "local",
+    ) -> Project: ...
+
+    def get(self, project_id: str) -> Project | None: ...
+
+    def list(self) -> list[Project]: ...
+
+    def delete(self, project_id: str) -> None: ...
 
 
 class DocumentRepository(Protocol):

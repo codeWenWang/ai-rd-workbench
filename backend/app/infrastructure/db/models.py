@@ -17,9 +17,26 @@ class ConversationModel(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     title: Mapped[str] = mapped_column(String(300))
     status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    project_id: Mapped[str | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
     messages = relationship("MessageModel", cascade="all, delete-orphan")
+
+
+class ProjectModel(Base):
+    __tablename__ = "projects"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(300), index=True)
+    root_path: Mapped[str] = mapped_column(String(1000), unique=True)
+    source_type: Mapped[str] = mapped_column(String(30), default="local")
+    status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
+    source_revision: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    tech_stack_json: Mapped[str] = mapped_column(Text, default="[]")
+    last_scanned_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
 
 class MessageModel(Base):

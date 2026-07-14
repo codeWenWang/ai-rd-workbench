@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy import delete, func, or_, select, text
@@ -21,6 +22,7 @@ from app.domain.entities import (
     MemoryStatus,
     Message,
     MessageStatus,
+    Project,
     ResourceStatus,
     ResourceType,
     ScoredChunk,
@@ -35,6 +37,7 @@ from app.infrastructure.db.models import (
     MemoryModel,
     MessageModel,
     MigrationRecordModel,
+    ProjectModel,
 )
 
 
@@ -51,10 +54,60 @@ class RepositoryBase:
         self.sessions = sessions
 
 
-class SqliteConversationRepository(RepositoryBase):
-    def create(self, title: str = "New conversation") -> Conversation:
+class SqliteProjectRepository(RepositoryBase):
+    def create(self, *, name: str, root_path: str, source_type: str = "local") -> Project:
+        normalized = str(Path(root_path).expanduser().resolve())
         with self.sessions.begin() as session:
-            row = ConversationModel(id=_id(), title=title.strip() or "New conversation")
+            row = ProjectModel(
+                id=_id(),
+                name=name.strip() or Path(normalized).name,
+                root_path=normalized,
+                source_type=source_type,
+            )
+            session.add(row)
+        return self._entity(row)
+
+    def get(self, project_id: str) -> Project | None:
+        with self.sessions() as session:
+            row = session.get(ProjectModel, project_id)
+            return self._entity(row) if row else None
+
+    def list(self) -> list[Project]:
+        with self.sessions() as session:
+            rows = session.scalars(select(ProjectModel).order_by(ProjectModel.created_at, ProjectModel.id))
+            return [self._entity(row) for row in rows]
+
+    def delete(self, project_id: str) -> None:
+        with self.sessions.begin() as session:
+            row = session.get(ProjectModel, project_id)
+            if not row:
+                raise ResourceNotFound("project not found")
+            session.delete(row)
+
+    @staticmethod
+    def _entity(row: ProjectModel) -> Project:
+        return Project(
+            id=row.id,
+            name=row.name,
+            root_path=row.root_path,
+            source_type=row.source_type,
+            status=row.status,
+            source_revision=row.source_revision,
+            tech_stack=json.loads(row.tech_stack_json or "[]"),
+            last_scanned_at=row.last_scanned_at,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+
+class SqliteConversationRepository(RepositoryBase):
+    def create(self, title: str = "New conversation", project_id: str | None = None) -> Conversation:
+        with self.sessions.begin() as session:
+            row = ConversationModel(
+                id=_id(),
+                title=title.strip() or "New conversation",
+                project_id=project_id,
+            )
             session.add(row)
         return self._entity(row)
 
@@ -63,11 +116,13 @@ class SqliteConversationRepository(RepositoryBase):
             row = session.get(ConversationModel, conversation_id)
             return self._entity(row) if row else None
 
-    def list(self, *, include_archived=False, offset=0, limit=100) -> list[Conversation]:
+    def list(self, *, include_archived=False, project_id=None, offset=0, limit=100) -> list[Conversation]:
         with self.sessions() as session:
             query = select(ConversationModel)
             if not include_archived:
                 query = query.where(ConversationModel.status == "active")
+            if project_id is not None:
+                query = query.where(ConversationModel.project_id == project_id)
             rows = session.scalars(
                 query.order_by(ConversationModel.updated_at.desc()).offset(offset).limit(limit)
             )
@@ -140,7 +195,14 @@ class SqliteConversationRepository(RepositoryBase):
 
     @staticmethod
     def _entity(row: ConversationModel) -> Conversation:
-        return Conversation(row.id, row.title, ConversationStatus(row.status), row.created_at, row.updated_at)
+        return Conversation(
+            row.id,
+            row.title,
+            ConversationStatus(row.status),
+            row.created_at,
+            row.updated_at,
+            row.project_id,
+        )
 
     @staticmethod
     def _message(row: MessageModel) -> Message:

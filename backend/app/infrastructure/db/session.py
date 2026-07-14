@@ -23,6 +23,18 @@ class Database:
 
         Base.metadata.create_all(self.engine)
         with self.engine.begin() as connection:
+            conversation_columns = {
+                row[1]
+                for row in connection.exec_driver_sql("PRAGMA table_info(conversations)")
+            }
+            if "project_id" not in conversation_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE conversations ADD COLUMN project_id VARCHAR(36)"
+                )
+            connection.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_conversations_project_id "
+                "ON conversations(project_id)"
+            )
             connection.exec_driver_sql(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5("
                 "chunk_id UNINDEXED, content, title, category, resource_type UNINDEXED, "

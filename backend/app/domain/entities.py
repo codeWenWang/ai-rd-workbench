@@ -100,6 +100,21 @@ class Conversation:
     status: ConversationStatus = ConversationStatus.ACTIVE
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    project_id: str | None = None
+
+
+@dataclass(slots=True)
+class Project:
+    id: str
+    name: str
+    root_path: str
+    source_type: str = "local"
+    status: str = "pending"
+    source_revision: str | None = None
+    tech_stack: list[str] = field(default_factory=list)
+    last_scanned_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 @dataclass(slots=True)
