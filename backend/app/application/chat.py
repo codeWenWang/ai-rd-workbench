@@ -172,6 +172,27 @@ class ChatUseCase:
             list(dict.fromkeys(knowledge.warnings + memory.warnings)),
         )
 
+    async def compare_models(
+        self,
+        message: str,
+        model_ids: list[str],
+        *,
+        project_id: str | None = None,
+    ) -> dict:
+        if not self.model_gateway:
+            raise ExternalServiceError("model gateway unavailable")
+        context, warnings = await self._stream_context(message, project_id)
+        prompt = _stream_prompt(message, context)
+        results = await self.model_gateway.compare(
+            [ModelMessage(MessageRole.USER, prompt)], model_ids
+        )
+        citations = [_stream_citation(item) for item in context]
+        return {
+            "items": results,
+            "citations": citations,
+            "warnings": warnings,
+        }
+
     async def _model_stream(self, model_id: str | None, messages):
         if model_id and self.model_gateway:
             async for token in self.model_gateway.stream(model_id, messages):

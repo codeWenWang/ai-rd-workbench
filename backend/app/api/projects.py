@@ -1,0 +1,79 @@
+import asyncio
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
+
+from app.api.serializers import serialize
+from app.dependencies import AppContainer, get_container
+from app.domain.errors import ResourceNotFound
+
+
+router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+
+class ProjectCreate(BaseModel):
+    name: str = Field(default="", max_length=300)
+    root_path: str = Field(min_length=1, max_length=1000)
+
+
+@router.post("")
+def create_project(payload: ProjectCreate, container: AppContainer = Depends(get_container)):
+    return serialize(container.project_use_case.create(payload.name, payload.root_path))
+
+
+@router.get("")
+def list_projects(container: AppContainer = Depends(get_container)):
+    items = container.project_use_case.list()
+    return {"items": [serialize(item) for item in items], "total": len(items)}
+
+
+@router.get("/{project_id}")
+def get_project(project_id: str, container: AppContainer = Depends(get_container)):
+    project = container.project_use_case.get(project_id)
+    if not project:
+        raise ResourceNotFound("project not found")
+    return serialize(project)
+
+
+@router.delete("/{project_id}")
+def delete_project(project_id: str, container: AppContainer = Depends(get_container)):
+    container.project_use_case.delete(project_id)
+    return {"success": True}
+
+
+@router.post("/{project_id}/scan")
+async def scan_project(project_id: str, container: AppContainer = Depends(get_container)):
+    summary = await asyncio.to_thread(container.project_analysis_use_case.scan, project_id)
+    warnings = []
+    indexed_chunks = 0
+    try:
+        indexed_chunks = await container.project_indexer.index(project_id)
+    except Exception:
+        warnings.append("project_semantic_index_unavailable")
+    return {**serialize(summary), "indexed_chunks": indexed_chunks, "warnings": warnings}
+
+
+@router.get("/{project_id}/files")
+def list_project_files(project_id: str, container: AppContainer = Depends(get_container)):
+    items = container.project_analysis.list_files(project_id)
+    return {
+        "items": [
+            {
+                "id": item.id,
+                "project_id": item.project_id,
+                "relative_path": item.relative_path,
+                "language": item.language,
+                "content_hash": item.content_hash,
+                "size_bytes": item.size_bytes,
+                "excerpt": item.content[:300],
+            }
+            for item in items
+        ],
+        "total": len(items),
+    }
+
+
+@router.get("/{project_id}/routes")
+def list_project_routes(project_id: str, container: AppContainer = Depends(get_container)):
+    items = container.project_analysis.list_routes(project_id)
+    return {"items": [serialize(item) for item in items], "total": len(items)}

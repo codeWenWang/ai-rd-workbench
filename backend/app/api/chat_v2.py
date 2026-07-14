@@ -23,9 +23,17 @@ class ConversationPatch(BaseModel):
     title: str = Field(min_length=1, max_length=300)
 
 
+class SessionCreate(BaseModel):
+    project_id: str | None = None
+
+
 @router.post("/api/chat/session")
-def create_session(container: AppContainer = Depends(get_container)):
-    return {"session_id": container.chat_use_case.create_session().id}
+def create_session(
+    payload: SessionCreate | None = None,
+    container: AppContainer = Depends(get_container),
+):
+    project_id = payload.project_id if payload else None
+    return {"session_id": container.chat_use_case.create_session(project_id).id}
 
 
 @router.post("/api/chat")
@@ -56,9 +64,11 @@ def _event(name: str, payload) -> str:
 
 
 @router.get("/api/conversations")
-def list_conversations(include_archived: bool = False, offset: int = 0, limit: int = 100,
+def list_conversations(include_archived: bool = False, project_id: str | None = None,
+                       offset: int = 0, limit: int = 100,
                        container: AppContainer = Depends(get_container)):
-    items = container.conversations.list(include_archived=include_archived, offset=offset, limit=limit)
+    items = container.conversations.list(include_archived=include_archived, project_id=project_id,
+                                         offset=offset, limit=limit)
     return {"items": [serialize(item) for item in items], "total": len(items)}
 
 

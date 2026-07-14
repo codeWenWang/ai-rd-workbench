@@ -33,6 +33,18 @@ class ModelProviderUseCase:
         )
         return self._public(provider)
 
+    def ensure_dashscope_default(self, settings) -> None:
+        if self.providers.list() or not settings.dashscope_api_key:
+            return
+        self.create(
+            name="通义千问",
+            provider_type="dashscope",
+            base_url=settings.dashscope_base_url,
+            model_name=settings.llm_model,
+            api_key=settings.dashscope_api_key,
+            is_default=True,
+        )
+
     def list(self):
         return [self._public(item) for item in self.providers.list()]
 

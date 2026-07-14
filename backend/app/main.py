@@ -1,11 +1,18 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import chat_v2, diagnostics, documents_v2, memories_v2
+from app.api import (
+    artifacts,
+    chat_v2,
+    diagnostics,
+    documents_v2,
+    memories_v2,
+    model_providers,
+    projects,
+)
 from app.api.errors import domain_error_handler, unexpected_error_handler
 from app.config import Settings
 from app.dependencies import AppContainer
@@ -35,10 +42,14 @@ def create_app(*, settings: Settings | None = None, container: AppContainer | No
     application.include_router(documents_v2.router)
     application.include_router(memories_v2.router)
     application.include_router(diagnostics.router)
+    application.include_router(projects.router)
+    application.include_router(artifacts.router)
+    application.include_router(model_providers.router)
+    application.include_router(model_providers.models_router)
 
     @application.get("/docs", include_in_schema=False)
-    def api_docs():
-        return FileResponse(frontend_dir / "docs.html", media_type="text/html")
+    def disabled_docs():
+        return Response(status_code=404)
 
     if frontend_dir.exists():
         application.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")

@@ -1,10 +1,15 @@
 from functools import cached_property
+from pathlib import Path
 
 from fastapi import Request
 
 from app.application.chat import ChatUseCase
 from app.application.documents import DocumentUseCase
 from app.application.memories import MemoryUseCase
+from app.application.artifacts import ArtifactUseCase
+from app.application.models import ModelProviderUseCase
+from app.application.project_analysis import ProjectAnalysisUseCase
+from app.application.projects import ProjectUseCase
 from app.application.migration import MigrationUseCase
 from app.config import Settings, get_settings
 from app.domain.entities import ResourceType
@@ -13,11 +18,19 @@ from app.infrastructure.db.repositories import (
     SqliteDocumentRepository,
     SqliteMemoryRepository,
     SqliteMigrationRepository,
+    SqliteModelProviderRepository,
+    SqliteProjectAnalysisRepository,
+    SqliteProjectRepository,
 )
 from app.infrastructure.db.session import Database
 from app.infrastructure.llm.dashscope import DashScopeChatModel, DashScopeEmbeddingModel
+from app.infrastructure.llm.gateway import ModelGateway
+from app.infrastructure.projects.parsers import ParserRegistry
+from app.infrastructure.projects.scanner import LocalProjectScanner
 from app.infrastructure.retrieval.fts import SqliteFtsSearch
 from app.infrastructure.retrieval.hybrid import HybridRetriever
+from app.infrastructure.retrieval.project import ProjectIndexer, ProjectRetriever
+from app.infrastructure.security.secrets import LocalSecretStore
 from app.infrastructure.vectorstores.pinecone import PineconeVectorIndex
 from app.workflows.chat_graph import build_chat_graph
 
@@ -31,6 +44,14 @@ class AppContainer:
         self.documents = SqliteDocumentRepository(self.database.session_factory)
         self.memories = SqliteMemoryRepository(self.database.session_factory)
         self.migrations = SqliteMigrationRepository(self.database.session_factory)
+        self.projects = SqliteProjectRepository(self.database.session_factory)
+        self.project_analysis = SqliteProjectAnalysisRepository(self.database.session_factory)
+        self.model_providers = SqliteModelProviderRepository(self.database.session_factory)
+        self.secret_store = LocalSecretStore(_data_dir(self.settings.database_url))
+        self.model_provider_use_case = ModelProviderUseCase(
+            self.model_providers, self.secret_store
+        )
+        self.model_provider_use_case.ensure_dashscope_default(self.settings)
 
     @cached_property
     def chat_model(self):
@@ -55,6 +76,40 @@ class AppContainer:
                                            ResourceType.MEMORY: self.settings.pinecone_memory_namespace})
 
     @cached_property
+    def project_retriever(self):
+        return ProjectRetriever(
+            self.project_analysis, self.embeddings, self.vector_index,
+            limit=self.settings.rag_top_k,
+        )
+
+    @cached_property
+    def project_indexer(self):
+        return ProjectIndexer(self.project_analysis, self.embeddings, self.vector_index)
+
+    @cached_property
+    def project_use_case(self):
+        return ProjectUseCase(self.projects)
+
+    @cached_property
+    def project_analysis_use_case(self):
+        return ProjectAnalysisUseCase(
+            self.projects,
+            self.project_analysis,
+            LocalProjectScanner(),
+            ParserRegistry(),
+        )
+
+    @cached_property
+    def artifact_use_case(self):
+        return ArtifactUseCase(self.projects, self.project_analysis)
+
+    @cached_property
+    def model_gateway(self):
+        gateway = ModelGateway()
+        self.model_provider_use_case.register_all(gateway)
+        return gateway
+
+    @cached_property
     def document_use_case(self):
         return DocumentUseCase(self.documents, self.embeddings, self.vector_index, self.settings)
 
@@ -74,6 +129,8 @@ class AppContainer:
             self.memory_use_case,
             model=self.chat_model,
             retriever=self.retriever,
+            project_retriever=self.project_retriever,
+            model_gateway=self.model_gateway,
         )
 
     @cached_property
@@ -84,3 +141,9 @@ class AppContainer:
 
 def get_container(request: Request) -> AppContainer:
     return request.app.state.container
+
+
+def _data_dir(database_url: str) -> Path:
+    if database_url.startswith("sqlite:///"):
+        return Path(database_url.removeprefix("sqlite:///" )).resolve().parent
+    return Path(__file__).resolve().parents[1] / "data"

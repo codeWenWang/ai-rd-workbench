@@ -99,14 +99,13 @@ def test_first_message_generates_a_conversation_title(tmp_path) -> None:
     assert conversation["title"] == "排查 Pinecone 向量写入失败"
 
 
-def test_docs_page_is_chinese_api_overview(tmp_path) -> None:
+def test_platform_docs_page_is_disabled(tmp_path) -> None:
     client = TestClient(create_app(container=make_container(tmp_path)))
 
     result = client.get("/docs")
 
-    assert result.status_code == 200
-    assert "研发知识工作台 API" in result.text
-    assert "接口定义 JSON" in result.text
+    assert result.status_code == 404
+    assert client.get("/openapi.json").status_code == 200
 
 
 def test_stream_contract_emits_required_events(tmp_path) -> None:
