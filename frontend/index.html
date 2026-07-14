@@ -12,7 +12,7 @@
       document.documentElement.dataset.theme = saved || preferred;
     })();
   </script>
-  <link rel="stylesheet" href="css/style.css?v=20260714.1">
+  <link rel="stylesheet" href="css/style.css?v=20260714.2">
 </head>
 <body>
   <div class="app-shell" id="app-shell">
@@ -38,12 +38,16 @@
       <nav class="primary-nav" aria-label="主导航">
         <button class="nav-item active" data-view="chat" aria-current="page" title="项目问答"><span class="nav-icon" aria-hidden="true">◇</span><span class="sidebar-label">项目问答</span></button>
         <button class="nav-item" data-view="overview" title="项目总览"><span class="nav-icon" aria-hidden="true">▦</span><span class="sidebar-label">项目总览</span></button>
-        <div class="analysis-nav">
-          <span class="nav-section-label sidebar-label">项目分析</span>
-          <button class="nav-item" data-view="architecture" title="架构图"><span class="nav-icon" aria-hidden="true">⌘</span><span class="sidebar-label">架构图</span></button>
-          <button class="nav-item" data-view="flow" title="流程图"><span class="nav-icon" aria-hidden="true">⇢</span><span class="sidebar-label">流程图</span></button>
-          <button class="nav-item" data-view="sequence" title="时序图"><span class="nav-icon" aria-hidden="true">⇅</span><span class="sidebar-label">时序图</span></button>
-          <button class="nav-item" data-view="project-api" title="项目接口文档"><span class="nav-icon" aria-hidden="true">{ }</span><span class="sidebar-label">接口文档</span></button>
+        <div class="analysis-nav collapsed" id="analysis-nav">
+          <button id="analysis-toggle" class="nav-item analysis-toggle" type="button" aria-expanded="false" aria-controls="analysis-menu" title="展开项目分析">
+            <span class="nav-icon" aria-hidden="true">⌘</span><span class="sidebar-label">项目分析</span><span class="analysis-chevron" aria-hidden="true">›</span>
+          </button>
+          <div id="analysis-menu" class="analysis-menu" aria-hidden="true" inert>
+            <button class="nav-item" data-view="architecture" title="架构图"><span class="nav-icon" aria-hidden="true">⌘</span><span class="sidebar-label">架构图</span></button>
+            <button class="nav-item" data-view="flow" title="流程图"><span class="nav-icon" aria-hidden="true">⇢</span><span class="sidebar-label">流程图</span></button>
+            <button class="nav-item" data-view="sequence" title="时序图"><span class="nav-icon" aria-hidden="true">⇅</span><span class="sidebar-label">时序图</span></button>
+            <button class="nav-item" data-view="project-api" title="项目接口文档"><span class="nav-icon" aria-hidden="true">{ }</span><span class="sidebar-label">接口文档</span></button>
+          </div>
         </div>
         <button class="nav-item" data-view="knowledge" title="知识库"><span class="nav-icon" aria-hidden="true">▤</span><span class="sidebar-label">知识库</span></button>
         <button class="nav-item" data-view="memories" title="个人记忆"><span class="nav-icon" aria-hidden="true">◎</span><span class="sidebar-label">个人记忆</span><span id="pending-count" class="count-badge hidden">0</span></button>
@@ -179,6 +183,6 @@
 
   <template id="loading-row-template"><tr><td colspan="6"><div class="loading-line">正在加载…</div></td></tr></template>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-  <script type="module" src="js/app.js?v=20260714.1"></script>
+  <script type="module" src="js/app.js?v=20260714.2"></script>
 </body>
 </html>

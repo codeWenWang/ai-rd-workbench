@@ -245,10 +245,25 @@ function setSidebarCollapsed(collapsed) {
   localStorage.setItem(SIDEBAR_KEY, String(collapsed));
 }
 
+function setAnalysisExpanded(expanded) {
+  const group = el('analysis-nav');
+  const toggle = el('analysis-toggle');
+  const menu = el('analysis-menu');
+  group.classList.toggle('collapsed', !expanded);
+  toggle.setAttribute('aria-expanded', String(expanded));
+  toggle.title = expanded ? '收起项目分析' : '展开项目分析';
+  menu.setAttribute('aria-hidden', String(!expanded));
+  menu.inert = !expanded;
+}
+
 async function initialize() {
   setTheme(document.documentElement.dataset.theme || 'light');
   setSidebarCollapsed(localStorage.getItem(SIDEBAR_KEY) === 'true');
+  setAnalysisExpanded(false);
   document.querySelectorAll('button.nav-item[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
+  el('analysis-toggle').addEventListener('click', () => {
+    setAnalysisExpanded(el('analysis-toggle').getAttribute('aria-expanded') !== 'true');
+  });
   el('theme-toggle').addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
   el('diagnostics-toggle').addEventListener('click', () => switchView('diagnostics'));
   el('sidebar-collapse').addEventListener('click', () => {

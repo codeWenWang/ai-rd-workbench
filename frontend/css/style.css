@@ -344,8 +344,13 @@ dialog footer { padding: 13px 18px; border-top: 1px solid var(--line); display: 
 .project-switcher { padding: 0 10px 8px; display: grid; grid-template-columns: minmax(0,1fr) 34px; gap: 6px; }
 .project-switcher select, .chat-model-controls select { min-width: 0; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); color: var(--text); padding: 0 9px; }
 .analysis-nav { display: grid; gap: 2px; }
+.analysis-toggle { font-weight: 600; }
+.analysis-chevron { display: inline-grid; place-items: center; color: var(--sidebar-muted); font-size: 18px; transition: transform .18s ease; }
+.analysis-menu { display: grid; gap: 2px; max-height: 190px; opacity: 1; overflow: hidden; visibility: visible; transition: max-height .18s ease, opacity .15s ease, visibility 0s; }
+.analysis-nav.collapsed .analysis-menu { max-height: 0; opacity: 0; visibility: hidden; pointer-events: none; transition: max-height .18s ease, opacity .15s ease, visibility 0s linear .18s; }
+.analysis-nav:not(.collapsed) .analysis-chevron { transform: rotate(90deg); }
+.analysis-menu .nav-item { min-height: 38px; padding-left: 22px; }
 .nav-section-label { padding: 9px 12px 3px; color: var(--muted); font-size: 10px; font-weight: 700; }
-.analysis-nav .nav-item { padding-left: 18px; }
 .service-state { width: 100%; border: 0; color: var(--muted); background: transparent; cursor: pointer; text-align: left; }
 .service-state:hover { color: var(--text); background: var(--hover); }
 .chat-header { gap: 16px; }
@@ -370,6 +375,7 @@ dialog footer { padding: 13px 18px; border-top: 1px solid var(--line); display: 
 .artifact-view .artifact-alert:empty { display: none; }
 .app-shell.sidebar-collapsed .project-switcher { grid-template-columns: 34px; justify-content: center; }
 .app-shell.sidebar-collapsed .project-switcher select, .app-shell.sidebar-collapsed .nav-section-label { display: none; }
+.app-shell.sidebar-collapsed .analysis-menu, .app-shell.sidebar-collapsed .analysis-chevron { display: none; }
 
 @media (max-width: 760px) {
   .chat-header { align-items: flex-start; }
@@ -377,6 +383,8 @@ dialog footer { padding: 13px 18px; border-top: 1px solid var(--line); display: 
   .chat-model-controls select { max-width: 150px; height: 30px; font-size: 11px; }
   .comparison-results { width: calc(100% - 20px); grid-template-columns: 1fr; }
   .artifact-content { margin-left: -4px; margin-right: -4px; padding: 12px; }
+  .app-shell.sidebar-collapsed .analysis-menu { display: grid; }
+  .app-shell.sidebar-collapsed .analysis-chevron { display: inline-grid; }
 }
 
 .docs-page { min-height: 100%; overflow: auto; background: var(--bg); }

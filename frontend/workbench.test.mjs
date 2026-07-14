@@ -13,7 +13,9 @@ test('sidebar owns project workspace, conversations, theme, and bottom diagnosti
   assert.match(sidebar, /id="new-conversation"/);
   assert.match(sidebar, /id="project-selector"/);
   assert.match(sidebar, /id="add-project"/);
-  assert.match(sidebar, /class="analysis-nav"/);
+  assert.match(sidebar, /class="analysis-nav collapsed"/);
+  assert.match(sidebar, /id="analysis-toggle"[^>]*aria-expanded="false"/);
+  assert.match(sidebar, /id="analysis-menu"/);
   assert.match(sidebar, /data-view="architecture"/);
   assert.match(sidebar, /data-view="flow"/);
   assert.match(sidebar, /data-view="sequence"/);
@@ -35,7 +37,19 @@ test('stylesheet defines collapsed sidebar, dark theme, and safe composer', asyn
   assert.match(css, /\.composer-shell/);
   assert.match(css, /padding-bottom:\s*max\(/);
   assert.match(css, /\.composer-shell\s*\{[^}]*grid-row:\s*4/s);
+  assert.match(css, /\.analysis-nav\.collapsed \.analysis-menu/);
+  assert.match(css, /\.analysis-nav\.collapsed \.analysis-menu\s*\{[^}]*visibility:\s*hidden/s);
+  assert.match(css, /\.analysis-nav:not\(\.collapsed\) \.analysis-chevron/);
   assert.doesNotMatch(css, /\.alert-stack:empty\s*\{[^}]*display:\s*none/s);
+});
+
+
+test('project analysis navigation defaults closed and toggles locally', async () => {
+  const appSource = await readFile(new URL('./js/app.js', import.meta.url), 'utf8');
+
+  assert.match(appSource, /function setAnalysisExpanded\(expanded\)/);
+  assert.match(appSource, /setAnalysisExpanded\(false\)/);
+  assert.match(appSource, /analysis-toggle[\s\S]*setAnalysisExpanded/);
 });
 
 
