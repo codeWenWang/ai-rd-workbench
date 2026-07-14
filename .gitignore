@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.env
+.venv/
+venv/
+node_modules/
+dist/
+*.log
+.DS_Store
+uploads/
+backend/data/
+.pytest_cache/
+.coverage
+htmlcov/
+.superpowers/
+.idea/
+.cursor/

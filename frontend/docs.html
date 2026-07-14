@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN" class="docs-root">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>研发知识工作台 API</title>
+  <script>
+    (() => {
+      const saved = localStorage.getItem('workbench_theme');
+      document.documentElement.dataset.theme = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    })();
+  </script>
+  <link rel="stylesheet" href="css/style.css?v=20260713.4">
+</head>
+<body class="docs-page">
+  <header class="docs-topbar">
+    <a class="docs-back" href="/">← 返回工作台</a>
+    <a class="button" href="/openapi.json">接口定义 JSON</a>
+  </header>
+  <main class="docs-main">
+    <header class="docs-hero">
+      <span class="eyebrow">本地服务接口</span>
+      <h1>研发知识工作台 API</h1>
+      <p>服务地址：<code>http://127.0.0.1:8000</code></p>
+    </header>
+
+    <section class="docs-section">
+      <h2>对话</h2>
+      <div class="endpoint-list">
+        <article class="endpoint"><span class="method post">POST</span><code>/api/chat/session</code><p>创建新对话。</p></article>
+        <article class="endpoint"><span class="method post">POST</span><code>/api/chat</code><p>提交问题并返回完整回答、引用和警告。</p></article>
+        <article class="endpoint"><span class="method post">POST</span><code>/api/chat/stream</code><p>使用 SSE 返回生成阶段、文本和引用。</p></article>
+        <article class="endpoint"><span class="method get">GET</span><code>/api/conversations</code><p>获取对话历史。</p></article>
+        <article class="endpoint"><span class="method get">GET</span><code>/api/conversations/{id}/messages</code><p>获取指定对话的全部消息。</p></article>
+        <article class="endpoint"><span class="method patch">PATCH</span><code>/api/conversations/{id}</code><p>修改对话名称。</p></article>
+        <article class="endpoint"><span class="method delete">DELETE</span><code>/api/conversations/{id}</code><p>删除对话及其消息。</p></article>
+      </div>
+    </section>
+
+    <section class="docs-section">
+      <h2>知识库</h2>
+      <div class="endpoint-list">
+        <article class="endpoint"><span class="method get">GET</span><code>/api/documents</code><p>查询知识文档和索引状态。</p></article>
+        <article class="endpoint"><span class="method post">POST</span><code>/api/documents/text</code><p>录入文本知识。</p></article>
+        <article class="endpoint"><span class="method post">POST</span><code>/api/documents/pdf</code><p>上传并索引 PDF。</p></article>
+        <article class="endpoint"><span class="method get">GET</span><code>/api/documents/{id}</code><p>查看文档详情和分块。</p></article>
+        <article class="endpoint"><span class="method post">POST</span><code>/api/documents/{id}/reindex</code><p>重新生成向量索引。</p></article>
+        <article class="endpoint"><span class="method delete">DELETE</span><code>/api/documents/{id}</code><p>删除文档和向量。</p></article>
+      </div>
+    </section>
+
+    <section class="docs-section">
+      <h2>个人记忆</h2>
+      <div class="endpoint-list">
+        <article class="endpoint"><span class="method get">GET</span><code>/api/memories</code><p>查询已确认的长期记忆。</p></article>
+        <article class="endpoint"><span class="method post">POST</span><code>/api/memories</code><p>添加文本记忆。</p></article>
+        <article class="endpoint"><span class="method patch">PATCH</span><code>/api/memories/{id}</code><p>编辑并重新索引记忆。</p></article>
+        <article class="endpoint"><span class="method delete">DELETE</span><code>/api/memories/{id}</code><p>删除记忆和向量。</p></article>
+        <article class="endpoint"><span class="method get">GET</span><code>/api/memory-candidates?status=pending</code><p>获取待确认记忆建议。</p></article>
+        <article class="endpoint"><span class="method post">POST</span><code>/api/memory-candidates/{id}/confirm</code><p>确认记忆建议。</p></article>
+        <article class="endpoint"><span class="method post">POST</span><code>/api/memory-candidates/{id}/reject</code><p>拒绝记忆建议。</p></article>
+      </div>
+    </section>
+
+    <section class="docs-section">
+      <h2>运行状态</h2>
+      <div class="endpoint-list">
+        <article class="endpoint"><span class="method get">GET</span><code>/api/health/live</code><p>检查进程是否存活。</p></article>
+        <article class="endpoint"><span class="method get">GET</span><code>/api/health/ready</code><p>检查数据库、模型和向量服务是否就绪。</p></article>
+        <article class="endpoint"><span class="method get">GET</span><code>/api/diagnostics</code><p>查看组件状态和索引一致性。</p></article>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

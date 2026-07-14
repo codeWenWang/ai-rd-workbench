@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>AI 研发知识工作台</title>
+  <script>
+    (() => {
+      const saved = localStorage.getItem('workbench_theme');
+      const preferred = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = saved || preferred;
+    })();
+  </script>
+  <link rel="stylesheet" href="css/style.css?v=20260713.4">
+</head>
+<body>
+  <div class="app-shell" id="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="应用侧边栏">
+      <div class="sidebar-header">
+        <a class="brand" href="/" aria-label="研发知识工作台首页">
+          <span class="brand-mark" aria-hidden="true">AI</span>
+          <span class="brand-copy"><strong>研发知识工作台</strong><small>本地单人增强版</small></span>
+        </a>
+        <button class="icon-btn sidebar-collapse" id="sidebar-collapse" title="收起侧边栏" aria-label="收起侧边栏" aria-expanded="true">‹</button>
+      </div>
+
+      <button id="new-conversation" class="sidebar-command" title="新建对话">
+        <span class="nav-icon" aria-hidden="true">＋</span><span class="sidebar-label">新建对话</span>
+      </button>
+
+      <nav class="primary-nav" aria-label="主导航">
+        <button class="nav-item active" data-view="chat" aria-current="page" title="对话"><span class="nav-icon" aria-hidden="true">◇</span><span class="sidebar-label">对话</span></button>
+        <button class="nav-item" data-view="knowledge" title="知识库"><span class="nav-icon" aria-hidden="true">▤</span><span class="sidebar-label">知识库</span></button>
+        <button class="nav-item" data-view="memories" title="个人记忆"><span class="nav-icon" aria-hidden="true">◎</span><span class="sidebar-label">个人记忆</span><span id="pending-count" class="count-badge hidden">0</span></button>
+        <button class="nav-item" data-view="diagnostics" title="运行状态"><span class="nav-icon" aria-hidden="true">⌁</span><span class="sidebar-label">运行状态</span></button>
+        <a class="nav-item" href="/docs" title="API 文档"><span class="nav-icon" aria-hidden="true">{ }</span><span class="sidebar-label">API 文档</span></a>
+      </nav>
+
+      <section class="history-section" aria-labelledby="history-title">
+        <div class="history-heading"><span id="history-title">最近对话</span></div>
+        <div id="conversation-error" class="inline-alert error hidden" role="alert"></div>
+        <div id="conversation-list" class="conversation-list" aria-label="对话历史"></div>
+      </section>
+
+      <footer class="sidebar-footer">
+        <button id="theme-toggle" class="sidebar-footer-button" title="切换明暗主题"><span class="nav-icon" aria-hidden="true">◐</span><span class="sidebar-label" id="theme-label">切换主题</span></button>
+        <div class="service-state"><span class="status-dot" id="global-status-dot"></span><span class="sidebar-label" id="global-status">正在连接本地服务</span></div>
+      </footer>
+    </aside>
+    <div id="sidebar-backdrop" class="sidebar-backdrop hidden"></div>
+
+    <main class="workspace">
+      <header class="mobile-bar">
+        <button class="icon-btn" id="menu-toggle" aria-label="打开导航" aria-expanded="false">☰</button>
+        <strong>研发知识工作台</strong>
+      </header>
+
+      <section class="view active chat-view" id="view-chat" aria-labelledby="active-conversation-title">
+        <div class="chat-main">
+          <header class="chat-header">
+            <div><h1 id="active-conversation-title">新对话</h1><span id="chat-stage" class="stage-label">就绪</span></div>
+          </header>
+          <div id="chat-alerts" class="alert-stack" aria-live="polite"></div>
+          <div id="message-list" class="message-list" aria-live="polite">
+            <div class="empty-state chat-empty"><strong>今天想解决什么问题？</strong></div>
+          </div>
+          <div class="composer-shell">
+            <form id="chat-form" class="composer">
+              <label class="sr-only" for="chat-input">输入问题</label>
+              <textarea id="chat-input" rows="1" maxlength="4000" placeholder="输入消息" required></textarea>
+              <button id="send-message" class="send-btn" type="submit" title="发送" aria-label="发送消息">↑</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section class="view content-view" id="view-knowledge" aria-labelledby="knowledge-title">
+        <header class="page-header"><div><h1 id="knowledge-title">知识库</h1><p>管理混合检索使用的文档和索引状态</p></div><button id="add-document" class="button primary">＋ 添加文档</button></header>
+        <div id="document-alert" class="inline-alert error hidden" role="alert"></div>
+        <div class="toolbar">
+          <label class="search-field"><span class="sr-only">搜索文档</span><span aria-hidden="true">⌕</span><input id="document-search" type="search" placeholder="搜索标题或内容"></label>
+          <label><span class="sr-only">分类</span><select id="document-category"><option value="">全部分类</option></select></label>
+          <label><span class="sr-only">状态</span><select id="document-status"><option value="">全部状态</option><option value="pending">等待中</option><option value="indexing">索引中</option><option value="indexed">已索引</option><option value="failed">失败</option><option value="deleting">删除中</option></select></label>
+          <button id="refresh-documents" class="icon-btn" title="刷新" aria-label="刷新文档">↻</button>
+        </div>
+        <div class="table-wrap">
+          <table><thead><tr><th>文档</th><th>分类</th><th>类型</th><th>状态</th><th>更新时间</th><th class="actions-col">操作</th></tr></thead><tbody id="document-table"></tbody></table>
+          <div id="document-empty" class="empty-state hidden"><strong>还没有文档</strong><span>添加文本或 PDF，建立本地知识索引。</span></div>
+        </div>
+      </section>
+
+      <section class="view content-view" id="view-memories" aria-labelledby="memories-title">
+        <header class="page-header"><div><h1 id="memories-title">个人记忆</h1><p>只有已确认内容会参与后续回答</p></div><button id="add-memory" class="button primary">＋ 添加记忆</button></header>
+        <div id="memory-alert" class="inline-alert error hidden" role="alert"></div>
+        <div class="tabs" role="tablist">
+          <button class="tab active" id="confirmed-tab" data-memory-tab="confirmed" role="tab" aria-selected="true">已确认 <span id="confirmed-count">0</span></button>
+          <button class="tab" id="candidate-tab" data-memory-tab="candidates" role="tab" aria-selected="false">待确认 <span id="candidate-count">0</span></button>
+        </div>
+        <div id="confirmed-memories" class="item-list"></div>
+        <div id="candidate-memories" class="item-list hidden"></div>
+      </section>
+
+      <section class="view content-view" id="view-diagnostics" aria-labelledby="diagnostics-title">
+        <header class="page-header"><div><h1 id="diagnostics-title">运行状态</h1><p id="diagnostics-updated">检查本地服务、索引与数据一致性</p></div><button id="refresh-diagnostics" class="button">↻ 刷新</button></header>
+        <div id="diagnostics-alert" class="inline-alert error hidden" role="alert"></div>
+        <div class="health-strip">
+          <div><span>进程存活</span><strong id="live-state">检查中</strong></div>
+          <div><span>服务就绪</span><strong id="ready-state">检查中</strong></div>
+          <div><span>一致性</span><strong id="consistency-state">检查中</strong></div>
+        </div>
+        <section class="diagnostic-section"><h2>组件</h2><div id="component-grid" class="component-grid"></div></section>
+        <section class="diagnostic-section"><h2>向量索引</h2><div id="vector-stats" class="stats-grid"></div></section>
+        <section class="diagnostic-section"><h2>迁移与一致性</h2><div id="migration-status" class="detail-list"></div></section>
+      </section>
+    </main>
+  </div>
+
+  <div id="drawer-backdrop" class="backdrop hidden"></div>
+  <aside id="detail-drawer" class="detail-drawer" aria-labelledby="drawer-title" aria-hidden="true">
+    <header><div><span id="drawer-eyebrow" class="eyebrow"></span><h2 id="drawer-title">详情</h2></div><button id="close-drawer" class="icon-btn" aria-label="关闭详情">×</button></header>
+    <div id="drawer-content" class="drawer-content"></div>
+  </aside>
+
+  <dialog id="app-dialog">
+    <form id="dialog-form" method="dialog">
+      <header><h2 id="dialog-title">操作</h2><button class="icon-btn" value="cancel" aria-label="关闭">×</button></header>
+      <div id="dialog-body" class="dialog-body"></div>
+      <div id="dialog-error" class="inline-alert error hidden" role="alert"></div>
+      <footer><button class="button" value="cancel">取消</button><button id="dialog-submit" class="button primary" value="default">确认</button></footer>
+    </form>
+  </dialog>
+
+  <template id="loading-row-template"><tr><td colspan="6"><div class="loading-line">正在加载…</div></td></tr></template>
+  <script type="module" src="js/app.js?v=20260713.4"></script>
+</body>
+</html>
