@@ -76,6 +76,7 @@ class MemoryKind(StrEnum):
 class ResourceType(StrEnum):
     KNOWLEDGE = "knowledge"
     MEMORY = "memory"
+    PROJECT = "project"
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,6 +171,31 @@ class ProjectScanSummary:
     route_count: int
     relation_count: int
     skipped_count: int = 0
+
+
+@dataclass(slots=True)
+class ProjectChunk:
+    id: str
+    project_id: str
+    project_file_id: str
+    relative_path: str
+    content: str
+    start_line: int
+    end_line: int
+    vector_id: str | None = None
+
+
+@dataclass(slots=True)
+class AnalysisArtifact:
+    id: str
+    project_id: str
+    artifact_type: str
+    format: str
+    content: str
+    source_revision: str
+    status: str = "ready"
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 @dataclass(slots=True)

@@ -56,12 +56,20 @@ class PineconeVectorIndex:
         except Exception as exc:
             raise ExternalServiceError("semantic retrieval unavailable") from exc
         matches = result.get("matches", []) if isinstance(result, dict) else result.matches
-        resource_type = ResourceType.MEMORY if namespace == self.settings.pinecone_memory_namespace else ResourceType.KNOWLEDGE
         output = []
         for match in matches:
             metadata = match.get("metadata", {}) if isinstance(match, dict) else (match.metadata or {})
             match_id = match.get("id") if isinstance(match, dict) else match.id
             score = match.get("score", 0.0) if isinstance(match, dict) else match.score
+            resource_value = metadata.get("resource_type")
+            try:
+                resource_type = ResourceType(resource_value) if resource_value else (
+                    ResourceType.MEMORY
+                    if namespace == self.settings.pinecone_memory_namespace
+                    else ResourceType.KNOWLEDGE
+                )
+            except ValueError:
+                resource_type = ResourceType.KNOWLEDGE
             output.append(ScoredChunk(
                 chunk_id=str(metadata.get("chunk_id") or match_id), content=str(metadata.get("text") or metadata.get("content") or ""),
                 score=float(score), title=metadata.get("title"), category=metadata.get("category"),

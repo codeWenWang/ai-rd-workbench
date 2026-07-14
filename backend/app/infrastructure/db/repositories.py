@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.domain.entities import (
     CandidateStatus,
+    AnalysisArtifact,
     Chunk,
     Citation,
     Conversation,
@@ -23,6 +25,7 @@ from app.domain.entities import (
     Message,
     MessageStatus,
     Project,
+    ProjectChunk,
     ProjectFile,
     ProjectRelation,
     ProjectRoute,
@@ -35,6 +38,7 @@ from app.domain.errors import ResourceNotFound
 from app.domain.ports import UNSET
 from app.infrastructure.db.models import (
     CandidateModel,
+    AnalysisArtifactModel,
     ChunkModel,
     ConversationModel,
     DocumentModel,
@@ -43,6 +47,7 @@ from app.infrastructure.db.models import (
     MigrationRecordModel,
     ProjectModel,
     ProjectFileModel,
+    ProjectChunkModel,
     ProjectRelationModel,
     ProjectRouteModel,
     ProjectSymbolModel,
@@ -135,6 +140,15 @@ class SqliteProjectAnalysisRepository(RepositoryBase):
             session.execute(delete(ProjectRouteModel).where(ProjectRouteModel.project_id == project_id))
             session.execute(delete(ProjectSymbolModel).where(ProjectSymbolModel.project_id == project_id))
             session.execute(delete(ProjectRelationModel).where(ProjectRelationModel.project_id == project_id))
+            old_chunk_ids = list(session.scalars(
+                select(ProjectChunkModel.id).where(ProjectChunkModel.project_id == project_id)
+            ))
+            for chunk_id in old_chunk_ids:
+                session.execute(
+                    text("DELETE FROM project_chunks_fts WHERE chunk_id=:id"),
+                    {"id": chunk_id},
+                )
+            session.execute(delete(ProjectChunkModel).where(ProjectChunkModel.project_id == project_id))
             session.execute(delete(ProjectFileModel).where(ProjectFileModel.project_id == project_id))
             for scanned, parsed in items:
                 file_id = _id()
@@ -148,6 +162,7 @@ class SqliteProjectAnalysisRepository(RepositoryBase):
                     size_bytes=scanned.size_bytes,
                     modified_ns=scanned.modified_ns,
                 ))
+                session.flush()
                 for symbol in parsed.symbols:
                     session.add(ProjectSymbolModel(
                         id=_id(), project_id=project_id, project_file_id=file_id,
@@ -170,6 +185,32 @@ class SqliteProjectAnalysisRepository(RepositoryBase):
                         id=_id(), project_id=project_id, source_path=scanned.relative_path,
                         target=target, kind="call", inferred=True,
                     ))
+                chunk_id = sha256(
+                    f"{project_id}:{scanned.relative_path}:{scanned.content_hash}".encode("utf-8")
+                ).hexdigest()
+                line_count = max(1, scanned.content.count("\n") + 1)
+                session.add(ProjectChunkModel(
+                    id=chunk_id,
+                    project_id=project_id,
+                    project_file_id=file_id,
+                    relative_path=scanned.relative_path,
+                    content=scanned.content,
+                    start_line=1,
+                    end_line=line_count,
+                    vector_id=chunk_id,
+                ))
+                session.execute(
+                    text(
+                        "INSERT INTO project_chunks_fts(chunk_id,project_id,content,relative_path) "
+                        "VALUES(:chunk_id,:project_id,:content,:relative_path)"
+                    ),
+                    {
+                        "chunk_id": chunk_id,
+                        "project_id": project_id,
+                        "content": scanned.content,
+                        "relative_path": scanned.relative_path,
+                    },
+                )
 
     def list_files(self, project_id: str) -> list[ProjectFile]:
         with self.sessions() as session:
@@ -213,6 +254,78 @@ class SqliteProjectAnalysisRepository(RepositoryBase):
             return [ProjectRelation(
                 row.id, row.project_id, row.source_path, row.target, row.kind, row.inferred,
             ) for row in rows]
+
+    def search_chunks(self, project_id: str, query: str, limit: int = 6) -> list[ProjectChunk]:
+        with self.sessions() as session:
+            rows = session.execute(text(
+                "SELECT pc.id,pc.project_id,pc.project_file_id,pc.relative_path,pc.content,"
+                "pc.start_line,pc.end_line,pc.vector_id "
+                "FROM project_chunks_fts f JOIN project_chunks pc ON pc.id=f.chunk_id "
+                "WHERE f.project_id=:project_id AND project_chunks_fts MATCH :query "
+                "ORDER BY bm25(project_chunks_fts) LIMIT :limit"
+            ), {"project_id": project_id, "query": query, "limit": limit}).mappings()
+            return [ProjectChunk(**dict(row)) for row in rows]
+
+    def list_chunks(self, project_id: str) -> list[ProjectChunk]:
+        with self.sessions() as session:
+            rows = session.scalars(
+                select(ProjectChunkModel).where(ProjectChunkModel.project_id == project_id)
+                .order_by(ProjectChunkModel.relative_path, ProjectChunkModel.start_line)
+            )
+            return [ProjectChunk(
+                row.id, row.project_id, row.project_file_id, row.relative_path,
+                row.content, row.start_line, row.end_line, row.vector_id,
+            ) for row in rows]
+
+    def save_artifact(
+        self,
+        *,
+        project_id: str,
+        artifact_type: str,
+        format: str,
+        content: str,
+        source_revision: str,
+    ) -> AnalysisArtifact:
+        with self.sessions.begin() as session:
+            row = AnalysisArtifactModel(
+                id=_id(), project_id=project_id, artifact_type=artifact_type,
+                format=format, content=content, source_revision=source_revision,
+            )
+            session.add(row)
+        return self._artifact(row)
+
+    def get_artifact(self, artifact_id: str) -> AnalysisArtifact | None:
+        with self.sessions() as session:
+            row = session.get(AnalysisArtifactModel, artifact_id)
+            return self._artifact(row) if row else None
+
+    def list_artifacts(self, project_id: str) -> list[AnalysisArtifact]:
+        with self.sessions() as session:
+            rows = session.scalars(
+                select(AnalysisArtifactModel)
+                .where(AnalysisArtifactModel.project_id == project_id)
+                .order_by(AnalysisArtifactModel.updated_at.desc())
+            )
+            return [self._artifact(row) for row in rows]
+
+    def mark_artifacts_stale(self, project_id: str) -> None:
+        with self.sessions.begin() as session:
+            rows = session.scalars(
+                select(AnalysisArtifactModel).where(
+                    AnalysisArtifactModel.project_id == project_id,
+                    AnalysisArtifactModel.status == "ready",
+                )
+            )
+            for row in rows:
+                row.status = "stale"
+                row.updated_at = _now()
+
+    @staticmethod
+    def _artifact(row: AnalysisArtifactModel) -> AnalysisArtifact:
+        return AnalysisArtifact(
+            row.id, row.project_id, row.artifact_type, row.format, row.content,
+            row.source_revision, row.status, row.created_at, row.updated_at,
+        )
 
 
 class SqliteConversationRepository(RepositoryBase):

@@ -91,6 +91,35 @@ class ProjectRelationModel(Base):
     inferred: Mapped[bool] = mapped_column(default=False)
 
 
+class ProjectChunkModel(Base):
+    __tablename__ = "project_chunks"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(36), index=True)
+    project_file_id: Mapped[str] = mapped_column(
+        ForeignKey("project_files.id", ondelete="CASCADE"), index=True
+    )
+    relative_path: Mapped[str] = mapped_column(String(1000), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    start_line: Mapped[int] = mapped_column(Integer, default=1)
+    end_line: Mapped[int] = mapped_column(Integer, default=1)
+    vector_id: Mapped[str | None] = mapped_column(String(200), nullable=True, unique=True)
+
+
+class AnalysisArtifactModel(Base):
+    __tablename__ = "analysis_artifacts"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    artifact_type: Mapped[str] = mapped_column(String(30), index=True)
+    format: Mapped[str] = mapped_column(String(30))
+    content: Mapped[str] = mapped_column(Text)
+    source_revision: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="ready", index=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+
 class MessageModel(Base):
     __tablename__ = "messages"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

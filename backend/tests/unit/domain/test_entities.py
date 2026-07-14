@@ -97,6 +97,7 @@ def test_domain_enums_expose_stable_wire_values() -> None:
     assert [resource_type.value for resource_type in ResourceType] == [
         "knowledge",
         "memory",
+        "project",
     ]
 
 

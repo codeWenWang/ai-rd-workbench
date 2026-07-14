@@ -14,6 +14,8 @@ class ProjectAnalysisUseCase:
         if not project:
             raise ResourceNotFound("project not found")
         scan = self.scanner.scan(project.root_path)
+        if project.source_revision and project.source_revision != scan.revision:
+            self.analysis.mark_artifacts_stale(project_id)
         parsed_items = [
             (item, self.parsers.parse(item.relative_path, item.content))
             for item in scan.files

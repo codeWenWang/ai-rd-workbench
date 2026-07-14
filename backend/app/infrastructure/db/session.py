@@ -40,6 +40,11 @@ class Database:
                 "chunk_id UNINDEXED, content, title, category, resource_type UNINDEXED, "
                 "tokenize='unicode61')"
             )
+            connection.exec_driver_sql(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS project_chunks_fts USING fts5("
+                "chunk_id UNINDEXED, project_id UNINDEXED, content, relative_path, "
+                "tokenize='unicode61')"
+            )
 
 
 @event.listens_for(Engine, "connect")
