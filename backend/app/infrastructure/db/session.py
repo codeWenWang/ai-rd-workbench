@@ -31,6 +31,14 @@ class Database:
                 connection.exec_driver_sql(
                     "ALTER TABLE conversations ADD COLUMN project_id VARCHAR(36)"
                 )
+            message_columns = {
+                row[1]
+                for row in connection.exec_driver_sql("PRAGMA table_info(messages)")
+            }
+            if "metadata_json" not in message_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE messages ADD COLUMN metadata_json TEXT DEFAULT '{}'"
+                )
             connection.exec_driver_sql(
                 "CREATE INDEX IF NOT EXISTS ix_conversations_project_id "
                 "ON conversations(project_id)"

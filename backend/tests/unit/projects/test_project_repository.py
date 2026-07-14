@@ -39,6 +39,25 @@ def test_conversation_can_be_bound_to_project(tmp_path: Path) -> None:
     assert [item.id for item in conversations.list(project_id=project.id)] == [conversation.id]
 
 
+def test_conversation_message_preserves_comparison_metadata(tmp_path: Path) -> None:
+    _, conversations = make_repositories(tmp_path)
+    conversation = conversations.create("模型对比")
+
+    conversations.add_message(
+        conversation.id,
+        role="assistant",
+        content="模型对比结果",
+        metadata={
+            "type": "model_comparison",
+            "items": [{"provider_name": "模型 A", "answer": "回答 A"}],
+        },
+    )
+
+    message = conversations.list_messages(conversation.id)[0]
+    assert message.metadata["type"] == "model_comparison"
+    assert message.metadata["items"][0]["provider_name"] == "模型 A"
+
+
 def test_project_use_case_rejects_missing_directory(tmp_path: Path) -> None:
     projects, _ = make_repositories(tmp_path)
     use_case = ProjectUseCase(projects)

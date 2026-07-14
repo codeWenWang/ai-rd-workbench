@@ -80,3 +80,31 @@ def test_model_provider_metadata_never_exposes_api_key(tmp_path: Path) -> None:
     assert provider.has_api_key is True
     assert not hasattr(provider, "api_key")
     assert use_case.list()[0].model_name == "deepseek-chat"
+
+
+def test_model_provider_can_be_edited_without_replacing_existing_key(tmp_path: Path) -> None:
+    database = Database(f"sqlite:///{(tmp_path / 'models.db').as_posix()}")
+    database.create_schema()
+    secrets = LocalSecretStore(tmp_path / "secrets")
+    use_case = ModelProviderUseCase(
+        SqliteModelProviderRepository(database.session_factory), secrets
+    )
+    provider = use_case.create(
+        name="DeepSeek",
+        provider_type="openai_compatible",
+        base_url="https://example.test/v1",
+        model_name="deepseek-chat",
+        api_key="sk-provider-secret",
+    )
+
+    updated = use_case.update(
+        provider.id,
+        name="DeepSeek V4",
+        model_name="deepseek-v4",
+        api_key="",
+    )
+
+    assert updated.name == "DeepSeek V4"
+    assert updated.model_name == "deepseek-v4"
+    assert updated.has_api_key is True
+    assert secrets.get(provider.secret_ref) == "sk-provider-secret"

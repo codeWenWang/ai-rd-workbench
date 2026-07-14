@@ -110,6 +110,28 @@ class SqliteModelProviderRepository(RepositoryBase):
             )
             return [self._entity(row) for row in rows]
 
+    def update(self, provider_id: str, **changes) -> ModelProvider:
+        with self.sessions.begin() as session:
+            row = session.get(ModelProviderModel, provider_id)
+            if not row:
+                raise ResourceNotFound("model provider not found")
+            if changes.get("is_default") is True:
+                for existing in session.scalars(
+                    select(ModelProviderModel).where(
+                        ModelProviderModel.is_default.is_(True),
+                        ModelProviderModel.id != provider_id,
+                    )
+                ):
+                    existing.is_default = False
+            for field in (
+                "name", "provider_type", "base_url", "model_name",
+                "enabled", "is_default",
+            ):
+                if field in changes and changes[field] is not None:
+                    setattr(row, field, changes[field])
+            row.updated_at = _now()
+        return self._entity(row)
+
     def delete(self, provider_id: str) -> None:
         with self.sessions.begin() as session:
             row = session.get(ModelProviderModel, provider_id)
@@ -441,12 +463,21 @@ class SqliteConversationRepository(RepositoryBase):
             row = self._require(session, conversation_id)
             session.delete(row)
 
-    def add_message(self, conversation_id: str, *, role: str, content: str, status=MessageStatus.PENDING) -> Message:
+    def add_message(
+        self,
+        conversation_id: str,
+        *,
+        role: str,
+        content: str,
+        status=MessageStatus.PENDING,
+        metadata: dict | None = None,
+    ) -> Message:
         with self.sessions.begin() as session:
             conversation = self._require(session, conversation_id)
             row = MessageModel(
                 id=_id(), conversation_id=conversation_id, role=str(role), content=content,
                 status=status.value if hasattr(status, "value") else str(status),
+                metadata_json=json.dumps(metadata or {}, ensure_ascii=False),
             )
             conversation.updated_at = _now()
             session.add(row)
@@ -470,6 +501,9 @@ class SqliteConversationRepository(RepositoryBase):
             warnings = changes.get("warnings", UNSET)
             if warnings is not UNSET:
                 row.warnings_json = json.dumps(warnings, ensure_ascii=False)
+            metadata = changes.get("metadata", UNSET)
+            if metadata is not UNSET:
+                row.metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
         return self._message(row)
 
     def list_messages(self, conversation_id: str) -> list[Message]:
@@ -504,7 +538,8 @@ class SqliteConversationRepository(RepositoryBase):
             id=row.id, conversation_id=row.conversation_id, role=row.role, content=row.content,
             status=MessageStatus(row.status), error_code=row.error_code, error_message=row.error_message,
             citations=[Citation(**item) for item in json.loads(row.citations_json or "[]")],
-            warnings=json.loads(row.warnings_json or "[]"), created_at=row.created_at,
+            warnings=json.loads(row.warnings_json or "[]"),
+            metadata=json.loads(row.metadata_json or "{}"), created_at=row.created_at,
         )
 
 

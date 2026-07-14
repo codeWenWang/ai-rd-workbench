@@ -109,19 +109,68 @@ def test_model_provider_api_hides_secret_and_platform_docs_are_removed(tmp_path:
     assert client.get("/openapi.json").status_code == 200
 
 
+def test_model_provider_api_supports_editing_without_exposing_secret(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+    created = client.post("/api/model-providers", json={
+        "name": "Old name",
+        "provider_type": "openai_compatible",
+        "base_url": "https://example.test/v1",
+        "model_name": "example-chat",
+        "api_key": "sk-super-secret",
+    }).json()
+
+    response = client.patch(f"/api/model-providers/{created['id']}", json={
+        "name": "New name",
+        "model_name": "example-chat-v2",
+        "api_key": "",
+    })
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "New name"
+    assert response.json()["model_name"] == "example-chat-v2"
+    assert response.json()["has_api_key"] is True
+    assert "api_key" not in response.json()
+
+
 def test_model_comparison_api_returns_two_independent_answers(tmp_path: Path) -> None:
     client = make_client(tmp_path)
     container = client.app.state.container
-    container.model_gateway = ModelGateway({"a": FixedModel("回答 A"), "b": FixedModel("回答 B")})
+    first = client.post("/api/model-providers", json={
+        "name": "模型 A",
+        "provider_type": "openai_compatible",
+        "base_url": "https://a.example.test/v1",
+        "model_name": "model-a",
+        "api_key": "sk-a",
+    }).json()
+    second = client.post("/api/model-providers", json={
+        "name": "模型 B",
+        "provider_type": "openai_compatible",
+        "base_url": "https://b.example.test/v1",
+        "model_name": "model-b",
+        "api_key": "sk-b",
+    }).json()
+    container.model_gateway = ModelGateway({
+        first["id"]: FixedModel("回答 A"),
+        second["id"]: FixedModel("回答 B"),
+    })
     container.__dict__.pop("chat_use_case", None)
+    session_id = client.post("/api/chat/session").json()["session_id"]
 
     result = client.post("/api/models/compare", json={
         "message": "比较模型",
-        "model_ids": ["a", "b"],
+        "model_ids": [first["id"], second["id"]],
+        "session_id": session_id,
     })
 
     assert result.status_code == 200
     assert [item["answer"] for item in result.json()["items"]] == ["回答 A", "回答 B"]
+    assert [item["provider_name"] for item in result.json()["items"]] == ["模型 A", "模型 B"]
+    assert [item["model_name"] for item in result.json()["items"]] == ["model-a", "model-b"]
+    assert result.json()["session_id"] == session_id
+    messages = client.get(f"/api/conversations/{session_id}/messages").json()["items"]
+    assert [item["role"] for item in messages] == ["user", "assistant"]
+    assert messages[-1]["metadata"]["type"] == "model_comparison"
+    assert messages[-1]["metadata"]["items"][0]["provider_name"] == "模型 A"
 
 
 def test_delete_project_removes_project_vectors_before_local_data(tmp_path: Path) -> None:

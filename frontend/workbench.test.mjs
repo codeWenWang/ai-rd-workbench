@@ -77,11 +77,29 @@ test('selecting a recent conversation requests the chat view', async () => {
 });
 
 
-test('chat header exposes model selection and comparison mode', async () => {
+test('chat keeps model comparison inside the message timeline', async () => {
   const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
+  const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
 
   assert.match(html, /id="chat-model"/);
   assert.match(html, /id="compare-models"/);
   assert.match(html, /id="model-settings"/);
-  assert.match(html, /id="comparison-results"/);
+  assert.doesNotMatch(html, /id="comparison-results"/);
+  assert.match(chatSource, /model_comparison/);
+  assert.match(chatSource, /comparison-turn/);
+  assert.match(css, /\.comparison-turn/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.comparison-grid/);
+});
+
+
+test('model settings manages existing providers', async () => {
+  const modelsSource = await readFile(new URL('./js/models.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.match(modelsSource, /function openModelManager/);
+  assert.match(modelsSource, /updateModelProvider/);
+  assert.match(modelsSource, /deleteModelProvider/);
+  assert.match(modelsSource, /留空保持原密钥/);
+  assert.match(css, /\.model-provider-list/);
 });

@@ -237,6 +237,7 @@ class Message:
     error_message: str | None = None
     citations: list[Citation] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
     created_at: datetime | None = None
 
 

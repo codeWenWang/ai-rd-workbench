@@ -165,6 +165,7 @@ export const api = {
   generateArtifact: (id, type) => request(`/api/projects/${encodeURIComponent(id)}/artifacts/${encodeURIComponent(type)}`, { method: 'POST', timeout: 120000 }),
   modelProviders: () => request('/api/model-providers'),
   createModelProvider: body => request('/api/model-providers', { method: 'POST', json: body }),
+  updateModelProvider: (id, body) => request(`/api/model-providers/${encodeURIComponent(id)}`, { method: 'PATCH', json: body }),
   deleteModelProvider: id => request(`/api/model-providers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   compareModels: body => request('/api/models/compare', { method: 'POST', json: body, timeout: 180000 }),
 };

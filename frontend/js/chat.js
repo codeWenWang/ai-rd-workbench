@@ -1,6 +1,6 @@
-import { api, errorText, listFrom, streamChat } from './api.js?v=20260714.1';
+import { api, errorText, listFrom, streamChat } from './api.js?v=20260714.3';
 import { activeProjectId } from './projects.js?v=20260714.1';
-import { comparisonModelIds, selectedModelId } from './models.js?v=20260714.1';
+import { comparisonModelIds, selectedModelId } from './models.js?v=20260714.3';
 
 const stageNames = {
   receive_query: '接收问题', understand_query: '理解问题', retrieving: '检索资料', retrieve_context: '检索资料',
@@ -89,6 +89,7 @@ function normalizeCitation(citation, index) {
 }
 
 function normalizeMessage(message) {
+  const metadata = value(message, 'metadata') || {};
   return {
     id: value(message, 'id', 'message_id') || crypto.randomUUID(),
     role: value(message, 'role') || 'assistant',
@@ -98,6 +99,8 @@ function normalizeMessage(message) {
     warnings: listFrom(value(message, 'warnings') || []).map(w => typeof w === 'string' ? w : value(w, 'message', 'code') || JSON.stringify(w)),
     error: value(message, 'error_message', 'error', 'message_error'),
     prompt: value(message, 'prompt', 'original_query'),
+    metadata,
+    comparison: metadata.type === 'model_comparison' ? listFrom(metadata.items || []) : [],
   };
 }
 
@@ -110,6 +113,47 @@ function renderMessages() {
   container.innerHTML = '';
   for (const message of state.messages) container.append(messageNode(message));
   requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+}
+
+function comparisonTurnNode(message) {
+  const turn = document.createElement('section');
+  turn.className = 'comparison-turn';
+  const heading = document.createElement('header');
+  heading.className = 'comparison-heading';
+  const title = document.createElement('strong');
+  title.textContent = '模型对比';
+  const subtitle = document.createElement('span');
+  subtitle.textContent = '相同问题与上下文，并行生成';
+  heading.append(title, subtitle);
+  turn.append(heading);
+
+  if (message.status === 'pending' && !message.comparison.length) {
+    const loading = document.createElement('div');
+    loading.className = 'comparison-loading';
+    loading.textContent = '正在并行调用两个模型…';
+    turn.append(loading);
+    return turn;
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'comparison-grid';
+  for (const item of message.comparison) {
+    const card = document.createElement('article');
+    card.className = `comparison-card${item.error ? ' failed' : ''}`;
+    const cardHeader = document.createElement('header');
+    const name = document.createElement('strong');
+    name.textContent = [item.provider_name, item.model_name].filter(Boolean).join(' · ') || '未命名模型';
+    const latency = document.createElement('span');
+    latency.textContent = `${Number(item.latency_ms || 0)} ms`;
+    cardHeader.append(name, latency);
+    const answer = document.createElement('div');
+    answer.className = 'comparison-answer';
+    answer.textContent = item.answer || item.error || '没有返回内容';
+    card.append(cardHeader, answer);
+    grid.append(card);
+  }
+  turn.append(grid);
+  return turn;
 }
 
 function messageNode(message) {
@@ -127,10 +171,15 @@ function messageNode(message) {
     article.append(avatar);
   }
 
-  const body = document.createElement('div');
-  body.className = 'message-body';
-  body.textContent = message.content || (message.status === 'pending' ? '正在思考…' : '');
-  content.append(body);
+  if (message.metadata.type === 'model_comparison') {
+    content.append(comparisonTurnNode(message));
+    article.classList.add('comparison-message');
+  } else {
+    const body = document.createElement('div');
+    body.className = 'message-body';
+    body.textContent = message.content || (message.status === 'pending' ? '正在思考…' : '');
+    content.append(body);
+  }
 
   const meta = document.createElement('div');
   meta.className = 'message-meta';
@@ -368,20 +417,38 @@ async function send(text) {
 }
 
 async function sendComparison(text, modelIds) {
-  const container = el('comparison-results');
-  container.classList.remove('hidden');
-  container.innerHTML = '<div class="loading-line">正在并行调用两个模型…</div>';
+  await ensureConversation();
+  state.messages.push(normalizeMessage({
+    role: 'user', content: text, status: 'completed', prompt: text,
+  }));
+  const comparison = normalizeMessage({
+    role: 'assistant',
+    content: '模型对比结果',
+    status: 'pending',
+    prompt: text,
+    metadata: { type: 'model_comparison', items: [] },
+  });
+  state.messages.push(comparison);
+  renderMessages();
+  setStage('generating');
   const payload = await api.compareModels({
     message: text,
     model_ids: modelIds,
     project_id: activeProjectId() || null,
+    session_id: state.activeId,
   });
-  const items = listFrom(payload);
-  container.innerHTML = items.map(item => `
-    <article class="comparison-card ${item.error ? 'failed' : ''}">
-      <header><strong>${ui.escape(item.model_id)}</strong><span>${ui.escape(String(item.latency_ms || 0))} ms</span></header>
-      <div class="comparison-answer">${ui.escape(item.answer || item.error || '没有返回内容')}</div>
-    </article>`).join('');
+  state.activeId = value(payload, 'session_id') || state.activeId;
+  localStorage.setItem('conversation_id', state.activeId);
+  comparison.id = value(payload, 'message_id') || comparison.id;
+  comparison.status = 'completed';
+  comparison.metadata = { type: 'model_comparison', items: listFrom(payload) };
+  comparison.comparison = comparison.metadata.items;
+  comparison.citations = listFrom(value(payload, 'citations') || []).map(normalizeCitation);
+  comparison.warnings = listFrom(value(payload, 'warnings') || []).map(item => typeof item === 'string' ? item : item.message);
+  updateMessage(comparison);
+  setStage('done', false);
+  await loadConversations({ select: false });
+  renderConversations();
 }
 
 function retryMessage(message) {

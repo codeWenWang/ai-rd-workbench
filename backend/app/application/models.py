@@ -48,6 +48,40 @@ class ModelProviderUseCase:
     def list(self):
         return [self._public(item) for item in self.providers.list()]
 
+    def update(
+        self,
+        provider_id: str,
+        *,
+        name: str | None = None,
+        provider_type: str | None = None,
+        base_url: str | None = None,
+        model_name: str | None = None,
+        api_key: str | None = None,
+        is_default: bool | None = None,
+    ):
+        current = self.providers.get(provider_id)
+        if not current:
+            raise ResourceNotFound("model provider not found")
+        resolved_type = (provider_type or current.provider_type).strip()
+        resolved_base_url = (base_url or current.base_url).strip().rstrip("/")
+        resolved_model_name = (model_name or current.model_name).strip()
+        resolved_name = (name or current.name).strip()
+        if resolved_type not in {"dashscope", "openai_compatible"}:
+            raise ValidationError("不支持的模型供应商类型")
+        if not resolved_name or not resolved_base_url or not resolved_model_name:
+            raise ValidationError("模型名称、模型地址和显示名称不能为空")
+        updated = self.providers.update(
+            provider_id,
+            name=resolved_name,
+            provider_type=resolved_type,
+            base_url=resolved_base_url,
+            model_name=resolved_model_name,
+            is_default=is_default,
+        )
+        if api_key is not None and api_key.strip():
+            self.secrets.set(current.secret_ref, api_key.strip())
+        return self._public(updated)
+
     def get(self, provider_id: str):
         provider = self.providers.get(provider_id)
         if not provider:

@@ -178,20 +178,75 @@ class ChatUseCase:
         model_ids: list[str],
         *,
         project_id: str | None = None,
+        session_id: str | None = None,
+        model_labels: dict[str, dict[str, str]] | None = None,
     ) -> dict:
         if not self.model_gateway:
             raise ExternalServiceError("model gateway unavailable")
-        context, warnings = await self._stream_context(message, project_id)
-        prompt = _stream_prompt(message, context)
-        results = await self.model_gateway.compare(
-            [ModelMessage(MessageRole.USER, prompt)], model_ids
+        conversation = self.conversations.get(session_id) if session_id else None
+        conversation = conversation or self.create_session(project_id)
+        existing_messages = self.conversations.list_messages(conversation.id)
+        if not existing_messages and conversation.title in {"New conversation", "新对话"}:
+            conversation = self.conversations.rename(
+                conversation.id, conversation_title(message)
+            )
+        self.conversations.add_message(
+            conversation.id,
+            role="user",
+            content=message,
+            status=MessageStatus.COMPLETED,
         )
-        citations = [_stream_citation(item) for item in context]
-        return {
-            "items": results,
-            "citations": citations,
-            "warnings": warnings,
-        }
+        assistant = self.conversations.add_message(
+            conversation.id,
+            role="assistant",
+            content="模型对比结果",
+            status=MessageStatus.PENDING,
+            metadata={"type": "model_comparison", "items": []},
+        )
+        try:
+            context, warnings = await self._stream_context(
+                message, conversation.project_id or project_id
+            )
+            prompt = _stream_prompt(message, context)
+            results = await self.model_gateway.compare(
+                [ModelMessage(MessageRole.USER, prompt)], model_ids
+            )
+            labels = model_labels or {}
+            items = []
+            for result in results:
+                label = labels.get(result.model_id, {})
+                items.append({
+                    "model_id": result.model_id,
+                    "provider_name": label.get("provider_name", "未命名模型"),
+                    "model_name": label.get("model_name", result.model_id),
+                    "answer": result.answer,
+                    "error": result.error,
+                    "latency_ms": result.latency_ms,
+                })
+            citations = [_stream_citation(item) for item in context]
+            metadata = {"type": "model_comparison", "items": items}
+            completed = self.conversations.update_message(
+                assistant.id,
+                status=MessageStatus.COMPLETED,
+                citations=citations,
+                warnings=warnings,
+                metadata=metadata,
+            )
+            return {
+                "items": items,
+                "citations": completed.citations,
+                "warnings": completed.warnings,
+                "session_id": conversation.id,
+                "message_id": completed.id,
+            }
+        except Exception as exc:
+            self.conversations.update_message(
+                assistant.id,
+                status=MessageStatus.FAILED,
+                error_code=getattr(exc, "code", "model_comparison_failed"),
+                error_message=str(exc),
+            )
+            raise
 
     async def _model_stream(self, model_id: str | None, messages):
         if model_id and self.model_gateway:

@@ -29,7 +29,7 @@ assert.equal(parsed.remainder, 'event: token\ndata: {"token":"未完成');
 for (const name of [
   'projects', 'createProject', 'scanProject', 'projectFiles',
   'artifacts', 'generateArtifact', 'modelProviders',
-  'createModelProvider', 'compareModels',
+  'createModelProvider', 'updateModelProvider', 'deleteModelProvider', 'compareModels',
 ]) assert.equal(typeof api[name], 'function', `${name} API helper missing`);
 
 console.log('api contract tests passed');

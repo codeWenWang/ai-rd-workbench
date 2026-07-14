@@ -147,6 +147,7 @@ class MessageModel(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     citations_json: Mapped[str] = mapped_column(Text, default="[]")
     warnings_json: Mapped[str] = mapped_column(Text, default="[]")
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
