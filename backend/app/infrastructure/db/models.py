@@ -120,6 +120,20 @@ class AnalysisArtifactModel(Base):
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
 
+class ModelProviderModel(Base):
+    __tablename__ = "model_providers"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(300))
+    provider_type: Mapped[str] = mapped_column(String(50), index=True)
+    base_url: Mapped[str] = mapped_column(String(1000))
+    model_name: Mapped[str] = mapped_column(String(300))
+    secret_ref: Mapped[str] = mapped_column(String(100), unique=True)
+    enabled: Mapped[bool] = mapped_column(default=True, index=True)
+    is_default: Mapped[bool] = mapped_column(default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+
 class MessageModel(Base):
     __tablename__ = "messages"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

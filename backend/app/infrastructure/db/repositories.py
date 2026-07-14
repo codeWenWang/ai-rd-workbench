@@ -24,6 +24,7 @@ from app.domain.entities import (
     MemoryStatus,
     Message,
     MessageStatus,
+    ModelProvider,
     Project,
     ProjectChunk,
     ProjectFile,
@@ -44,6 +45,7 @@ from app.infrastructure.db.models import (
     DocumentModel,
     MemoryModel,
     MessageModel,
+    ModelProviderModel,
     MigrationRecordModel,
     ProjectModel,
     ProjectFileModel,
@@ -65,6 +67,64 @@ def _now() -> datetime:
 class RepositoryBase:
     def __init__(self, sessions: sessionmaker[Session]) -> None:
         self.sessions = sessions
+
+
+class SqliteModelProviderRepository(RepositoryBase):
+    def create(
+        self,
+        *,
+        name: str,
+        provider_type: str,
+        base_url: str,
+        model_name: str,
+        secret_ref: str,
+        is_default: bool = False,
+    ) -> ModelProvider:
+        with self.sessions.begin() as session:
+            if is_default:
+                for existing in session.scalars(
+                    select(ModelProviderModel).where(ModelProviderModel.is_default.is_(True))
+                ):
+                    existing.is_default = False
+            row = ModelProviderModel(
+                id=_id(), name=name, provider_type=provider_type, base_url=base_url,
+                model_name=model_name, secret_ref=secret_ref,
+                is_default=is_default,
+            )
+            session.add(row)
+        return self._entity(row)
+
+    def get(self, provider_id: str) -> ModelProvider | None:
+        with self.sessions() as session:
+            row = session.get(ModelProviderModel, provider_id)
+            return self._entity(row) if row else None
+
+    def list(self, *, enabled_only: bool = False) -> list[ModelProvider]:
+        with self.sessions() as session:
+            query = select(ModelProviderModel)
+            if enabled_only:
+                query = query.where(ModelProviderModel.enabled.is_(True))
+            rows = session.scalars(
+                query.order_by(ModelProviderModel.is_default.desc(), ModelProviderModel.created_at)
+            )
+            return [self._entity(row) for row in rows]
+
+    def delete(self, provider_id: str) -> None:
+        with self.sessions.begin() as session:
+            row = session.get(ModelProviderModel, provider_id)
+            if not row:
+                raise ResourceNotFound("model provider not found")
+            session.delete(row)
+
+    @staticmethod
+    def _entity(row: ModelProviderModel) -> ModelProvider:
+        return ModelProvider(
+            id=row.id, name=row.name, provider_type=row.provider_type,
+            base_url=row.base_url, model_name=row.model_name,
+            secret_ref=row.secret_ref, enabled=row.enabled,
+            is_default=row.is_default, created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
 
 
 class SqliteProjectRepository(RepositoryBase):

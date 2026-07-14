@@ -95,6 +95,29 @@ class ModelMessage:
 
 
 @dataclass(slots=True)
+class ModelComparisonResult:
+    model_id: str
+    answer: str = ""
+    error: str | None = None
+    latency_ms: int = 0
+
+
+@dataclass(slots=True)
+class ModelProvider:
+    id: str
+    name: str
+    provider_type: str
+    base_url: str
+    model_name: str
+    secret_ref: str
+    enabled: bool = True
+    is_default: bool = False
+    has_api_key: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+@dataclass(slots=True)
 class Conversation:
     id: str
     title: str
