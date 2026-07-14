@@ -1,5 +1,6 @@
 import { api, errorText, listFrom, streamChat } from './api.js?v=20260714.3';
-import { activeProjectId } from './projects.js?v=20260714.1';
+import { groupConversations } from './conversation-groups.js?v=20260714.4';
+import { activeProjectId, projectById } from './projects.js?v=20260714.4';
 import { comparisonModelIds, selectedModelId } from './models.js?v=20260714.3';
 
 const stageNames = {
@@ -14,11 +15,13 @@ const state = {
   messages: [],
   sending: false,
 };
+const expandedProjectIds = new Set();
 let ui;
 
 const el = id => document.getElementById(id);
 const value = (obj, ...keys) => keys.map(key => obj?.[key]).find(item => item !== undefined && item !== null);
 const conversationId = item => value(item, 'id', 'conversation_id', 'session_id');
+const normalizeProjectId = item => String(typeof item === 'object' ? value(item, 'project_id') || '' : item || '');
 const conversationTitle = item => {
   const title = value(item, 'title', 'name');
   return !title || title === 'New conversation' ? '新对话' : title;
@@ -32,6 +35,82 @@ function syncActiveTitle() {
   el('active-conversation-title').textContent = conversationTitle(activeConversation());
 }
 
+function conversationRow(item) {
+  const id = conversationId(item);
+  const row = document.createElement('div');
+  row.className = `conversation-row${id === state.activeId ? ' active' : ''}`;
+
+  const select = document.createElement('button');
+  select.className = 'conversation-item';
+  select.title = conversationTitle(item);
+  select.innerHTML = `<strong>${ui.escape(conversationTitle(item))}</strong><span>${ui.escape(ui.formatTime(value(item, 'updated_at', 'created_at')))}</span>`;
+  select.addEventListener('click', () => selectConversation(id));
+
+  const actions = document.createElement('div');
+  actions.className = 'conversation-actions';
+  const rename = document.createElement('button');
+  rename.className = 'conversation-action';
+  rename.type = 'button';
+  rename.title = '重命名';
+  rename.setAttribute('aria-label', `重命名${conversationTitle(item)}`);
+  rename.textContent = '✎';
+  rename.addEventListener('click', () => renameConversation(item));
+  const remove = document.createElement('button');
+  remove.className = 'conversation-action danger';
+  remove.type = 'button';
+  remove.title = '删除';
+  remove.setAttribute('aria-label', `删除${conversationTitle(item)}`);
+  remove.textContent = '×';
+  remove.addEventListener('click', () => deleteConversation(item));
+  actions.append(rename, remove);
+  row.append(select, actions);
+  return row;
+}
+
+function setProjectGroupExpanded(group, panel, toggle, expanded) {
+  const projectId = group.dataset.projectId;
+  group.classList.toggle('collapsed', !expanded);
+  toggle.setAttribute('aria-expanded', String(expanded));
+  panel.setAttribute('aria-hidden', String(!expanded));
+  panel.inert = !expanded;
+  if (expanded) expandedProjectIds.add(projectId); else expandedProjectIds.delete(projectId);
+}
+
+function projectHistoryGroup(groupData) {
+  const group = document.createElement('section');
+  group.className = 'project-history-group';
+  group.dataset.projectId = groupData.projectId;
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'project-history-toggle';
+  const label = document.createElement('strong');
+  label.textContent = groupData.name;
+  const count = document.createElement('span');
+  count.className = 'project-history-count';
+  count.textContent = String(groupData.conversations.length);
+  const chevron = document.createElement('span');
+  chevron.className = 'project-history-chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.textContent = '›';
+  toggle.append(label, count, chevron);
+
+  const panel = document.createElement('div');
+  panel.className = 'project-conversation-panel';
+  const inner = document.createElement('div');
+  inner.className = 'project-conversation-inner';
+  groupData.conversations.forEach(item => inner.append(conversationRow(item)));
+  panel.append(inner);
+  group.append(toggle, panel);
+
+  const expanded = expandedProjectIds.has(groupData.projectId);
+  setProjectGroupExpanded(group, panel, toggle, expanded);
+  toggle.addEventListener('click', () => {
+    setProjectGroupExpanded(group, panel, toggle, toggle.getAttribute('aria-expanded') !== 'true');
+  });
+  return group;
+}
+
 function renderConversations() {
   const container = el('conversation-list');
   container.innerHTML = '';
@@ -40,36 +119,17 @@ function renderConversations() {
     syncActiveTitle();
     return;
   }
-  for (const item of state.conversations) {
-    const id = conversationId(item);
-    const row = document.createElement('div');
-    row.className = `conversation-row${id === state.activeId ? ' active' : ''}`;
 
-    const select = document.createElement('button');
-    select.className = 'conversation-item';
-    select.title = conversationTitle(item);
-    select.innerHTML = `<strong>${ui.escape(conversationTitle(item))}</strong><span>${ui.escape(ui.formatTime(value(item, 'updated_at', 'created_at')))}</span>`;
-    select.addEventListener('click', () => selectConversation(id));
-
-    const actions = document.createElement('div');
-    actions.className = 'conversation-actions';
-    const rename = document.createElement('button');
-    rename.className = 'conversation-action';
-    rename.type = 'button';
-    rename.title = '重命名';
-    rename.setAttribute('aria-label', `重命名${conversationTitle(item)}`);
-    rename.textContent = '✎';
-    rename.addEventListener('click', () => renameConversation(item));
-    const remove = document.createElement('button');
-    remove.className = 'conversation-action danger';
-    remove.type = 'button';
-    remove.title = '删除';
-    remove.setAttribute('aria-label', `删除${conversationTitle(item)}`);
-    remove.textContent = '×';
-    remove.addEventListener('click', () => deleteConversation(item));
-    actions.append(rename, remove);
-    row.append(select, actions);
-    container.append(row);
+  const activeProject = normalizeProjectId(activeConversation());
+  if (activeProject) expandedProjectIds.add(activeProject);
+  const grouped = groupConversations(state.conversations, projectId => projectById(projectId)?.name);
+  grouped.projects.forEach(group => container.append(projectHistoryGroup(group)));
+  if (grouped.general.length) {
+    const label = document.createElement('div');
+    label.className = 'conversation-group-label';
+    label.textContent = '通用对话';
+    container.append(label);
+    grouped.general.forEach(item => container.append(conversationRow(item)));
   }
   syncActiveTitle();
 }
@@ -236,21 +296,24 @@ function showConversationError(error) {
   target.classList.remove('hidden');
 }
 
-async function loadConversations({ select = true } = {}) {
+async function loadConversations({ select = true, preferredProjectId = activeProjectId() } = {}) {
   try {
-    const payload = await api.conversations(activeProjectId());
+    const payload = await api.conversations();
     state.conversations = listFrom(payload, ['conversations', 'items', 'data']);
     el('conversation-error').classList.add('hidden');
     if (state.activeId && !state.conversations.some(item => conversationId(item) === state.activeId)) {
       state.activeId = '';
       localStorage.removeItem('conversation_id');
     }
-    if (select && !state.activeId && state.conversations.length) {
-      state.activeId = conversationId(state.conversations[0]);
-      localStorage.setItem('conversation_id', state.activeId);
+    if (select && !state.activeId) {
+      const preferred = normalizeProjectId(preferredProjectId);
+      const target = state.conversations.find(item => normalizeProjectId(item) === preferred);
+      state.activeId = target ? conversationId(target) : '';
+      if (state.activeId) localStorage.setItem('conversation_id', state.activeId);
+      else localStorage.removeItem('conversation_id');
     }
     renderConversations();
-    if (select && state.activeId) await loadMessages();
+    if (select) await loadMessages();
   } catch (error) {
     state.conversations = [];
     renderConversations();
@@ -285,6 +348,10 @@ async function selectConversation(id) {
   localStorage.setItem('conversation_id', id);
   renderConversations();
   await loadMessages();
+}
+
+function conversationContextProjectId() {
+  return normalizeProjectId(activeConversation()) || normalizeProjectId(activeProjectId()) || null;
 }
 
 async function createConversation() {
@@ -384,7 +451,7 @@ async function send(text) {
       await streamChat({
         message: text,
         session_id: state.activeId,
-        project_id: activeProjectId() || null,
+        project_id: conversationContextProjectId(),
         model_id: selectedModelId(),
       }, (event, data) => applyStreamEvent(assistant, event, data));
       if (assistant.status === 'pending') {
@@ -434,7 +501,7 @@ async function sendComparison(text, modelIds) {
   const payload = await api.compareModels({
     message: text,
     model_ids: modelIds,
-    project_id: activeProjectId() || null,
+    project_id: conversationContextProjectId(),
     session_id: state.activeId,
   });
   state.activeId = value(payload, 'session_id') || state.activeId;
@@ -483,7 +550,9 @@ async function deleteConversation(item) {
     const wasActive = id === state.activeId;
     state.conversations = state.conversations.filter(entry => conversationId(entry) !== id);
     if (wasActive) {
-      state.activeId = state.conversations.length ? conversationId(state.conversations[0]) : '';
+      const fallbackProjectId = normalizeProjectId(item);
+      const fallback = state.conversations.find(entry => normalizeProjectId(entry) === fallbackProjectId);
+      state.activeId = fallback ? conversationId(fallback) : '';
       if (state.activeId) localStorage.setItem('conversation_id', state.activeId); else localStorage.removeItem('conversation_id');
       await loadMessages();
     }
@@ -519,13 +588,13 @@ export async function initChat(sharedUi) {
     }
   });
   el('new-conversation').addEventListener('click', createConversation);
-  ui.on('project:changed', async () => {
+  ui.on('project:changed', async ({ projectId } = {}) => {
     if (state.sending) return;
     state.activeId = '';
     state.messages = [];
     localStorage.removeItem('conversation_id');
     renderMessages();
-    await loadConversations();
+    await loadConversations({ preferredProjectId: projectId || '' });
   });
   await loadConversations();
 }

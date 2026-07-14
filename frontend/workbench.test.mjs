@@ -77,6 +77,31 @@ test('selecting a recent conversation requests the chat view', async () => {
 });
 
 
+test('recent conversations render generic items and collapsible project groups', async () => {
+  const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.match(chatSource, /import \{ groupConversations \}/);
+  assert.match(chatSource, /expandedProjectIds/);
+  assert.match(chatSource, /project-history-group/);
+  assert.match(chatSource, /project-history-toggle/);
+  assert.match(chatSource, /aria-expanded/);
+  assert.match(chatSource, /api\.conversations\(\)/);
+  assert.match(css, /\.project-history-group\.collapsed \.project-conversation-panel/);
+  assert.match(css, /\.project-history-chevron/);
+});
+
+
+test('workspace selection and deletion remain inside the matching conversation group', async () => {
+  const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
+
+  assert.match(chatSource, /preferredProjectId/);
+  assert.match(chatSource, /normalizeProjectId/);
+  assert.match(chatSource, /fallbackProjectId/);
+  assert.match(chatSource, /project:changed[\s\S]*preferredProjectId/);
+});
+
+
 test('chat keeps model comparison inside the message timeline', async () => {
   const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
   const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');

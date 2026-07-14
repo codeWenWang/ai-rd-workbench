@@ -12,6 +12,10 @@ export function activeProject() {
   return state.projects.find(item => item.id === state.activeId) || null;
 }
 
+export function projectById(projectId) {
+  return state.projects.find(item => item.id === projectId) || null;
+}
+
 function renderSelector() {
   const select = el('project-selector');
   select.innerHTML = '<option value="">通用工作区</option>';
