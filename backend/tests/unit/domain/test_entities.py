@@ -81,6 +81,7 @@ def test_domain_enums_expose_stable_wire_values() -> None:
         "pending",
         "completed",
         "failed",
+        "cancelled",
     ]
     assert [status.value for status in MemoryStatus] == ["confirmed", "archived"]
     assert [status.value for status in CandidateStatus] == [

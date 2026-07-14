@@ -68,7 +68,13 @@ class AppContainer:
 
     @cached_property
     def chat_use_case(self):
-        return ChatUseCase(self.conversations, self.graph, self.memory_use_case)
+        return ChatUseCase(
+            self.conversations,
+            self.graph,
+            self.memory_use_case,
+            model=self.chat_model,
+            retriever=self.retriever,
+        )
 
     @cached_property
     def migration_use_case(self):

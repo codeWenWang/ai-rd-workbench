@@ -47,6 +47,7 @@ class MessageStatus(StrEnum):
     PENDING = "pending"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class MessageRole(StrEnum):
@@ -86,6 +87,10 @@ class Citation:
     excerpt: str
     page_number: int | None = None
     category: str | None = None
+    resource_type: str | None = None
+    relative_path: str | None = None
+    start_line: int | None = None
+    end_line: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

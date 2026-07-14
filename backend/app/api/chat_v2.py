@@ -15,6 +15,8 @@ router = APIRouter(tags=["chat"])
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     session_id: str | None = None
+    project_id: str | None = None
+    model_id: str | None = None
 
 
 class ConversationPatch(BaseModel):
@@ -34,17 +36,14 @@ async def chat(request: ChatRequest, container: AppContainer = Depends(get_conta
 @router.post("/api/chat/stream")
 async def stream_chat(request: ChatRequest, container: AppContainer = Depends(get_container)):
     async def events() -> AsyncIterator[str]:
-        yield _event("stage", {"stage": "retrieving"})
         try:
-            result = await container.chat_use_case.chat(request.message, request.session_id)
-            yield _event("stage", {"stage": "generating"})
-            answer = result["answer"]
-            for start in range(0, len(answer), 24):
-                yield _event("token", {"token": answer[start:start + 24]})
-            yield _event("citations", result.get("citations", []))
-            for warning in result.get("warnings", []):
-                yield _event("warning", {"warning": warning})
-            yield _event("done", result)
+            async for item in container.chat_use_case.stream_chat(
+                request.message,
+                request.session_id,
+                project_id=request.project_id,
+                model_id=request.model_id,
+            ):
+                yield _event(item["event"], item["data"])
         except Exception as exc:
             yield _event("error", {"code": getattr(exc, "code", "chat_failed"), "message": str(exc)})
             yield _event("done", {"ok": False})
