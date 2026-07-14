@@ -340,6 +340,45 @@ dialog footer { padding: 13px 18px; border-top: 1px solid var(--line); display: 
   * { scroll-behavior: auto !important; transition: none !important; }
 }
 
+/* Project workspace */
+.project-switcher { padding: 0 10px 8px; display: grid; grid-template-columns: minmax(0,1fr) 34px; gap: 6px; }
+.project-switcher select, .chat-model-controls select { min-width: 0; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); color: var(--text); padding: 0 9px; }
+.analysis-nav { display: grid; gap: 2px; }
+.nav-section-label { padding: 9px 12px 3px; color: var(--muted); font-size: 10px; font-weight: 700; }
+.analysis-nav .nav-item { padding-left: 18px; }
+.service-state { width: 100%; border: 0; color: var(--muted); background: transparent; cursor: pointer; text-align: left; }
+.service-state:hover { color: var(--text); background: var(--hover); }
+.chat-header { gap: 16px; }
+.chat-model-controls { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; }
+.chat-model-controls select { max-width: 210px; }
+.compare-toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.compare-toggle input { accent-color: var(--accent); }
+.comparison-results { width: min(980px,calc(100% - 32px)); margin: 14px auto 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; overflow: auto; }
+.comparison-card { min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 15px; }
+.comparison-card.failed { border-color: var(--danger); }
+.comparison-card header { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
+.comparison-card header strong { color: var(--text); }
+.comparison-answer { margin-top: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.project-stats { margin-bottom: 26px; }
+.header-actions { display: flex; align-items: center; gap: 8px; }
+.list-item.compact { min-height: 64px; }
+.artifact-content { margin-top: 20px; min-height: 420px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 20px; overflow: auto; }
+.artifact-meta { margin-bottom: 14px; color: var(--muted); font-size: 12px; }
+.artifact-diagram { display: flex; justify-content: center; min-width: 720px; background: transparent; }
+.artifact-code, .artifact-markdown { margin: 0; font: 13px/1.65 "Cascadia Code", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+.artifact-markdown { min-width: 0; }
+.artifact-view .artifact-alert:empty { display: none; }
+.app-shell.sidebar-collapsed .project-switcher { grid-template-columns: 34px; justify-content: center; }
+.app-shell.sidebar-collapsed .project-switcher select, .app-shell.sidebar-collapsed .nav-section-label { display: none; }
+
+@media (max-width: 760px) {
+  .chat-header { align-items: flex-start; }
+  .chat-model-controls { max-width: 58%; flex-wrap: wrap; gap: 5px; }
+  .chat-model-controls select { max-width: 150px; height: 30px; font-size: 11px; }
+  .comparison-results { width: calc(100% - 20px); grid-template-columns: 1fr; }
+  .artifact-content { margin-left: -4px; margin-right: -4px; padding: 12px; }
+}
+
 .docs-page { min-height: 100%; overflow: auto; background: var(--bg); }
 .docs-topbar { position: sticky; top: 0; z-index: 10; min-height: 58px; padding: 10px clamp(16px,4vw,40px); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(14px); display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .docs-back { color: var(--text); text-decoration: none; font-weight: 600; }

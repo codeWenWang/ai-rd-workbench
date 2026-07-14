@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 
-test('sidebar owns navigation, conversations, theme, and API access', async () => {
+test('sidebar owns project workspace, conversations, theme, and bottom diagnostics', async () => {
   const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
   const start = html.indexOf('<aside class="sidebar"');
   const end = html.indexOf('</aside>', start);
@@ -11,10 +11,19 @@ test('sidebar owns navigation, conversations, theme, and API access', async () =
 
   assert.match(sidebar, /id="sidebar-collapse"/);
   assert.match(sidebar, /id="new-conversation"/);
+  assert.match(sidebar, /id="project-selector"/);
+  assert.match(sidebar, /id="add-project"/);
+  assert.match(sidebar, /class="analysis-nav"/);
+  assert.match(sidebar, /data-view="architecture"/);
+  assert.match(sidebar, /data-view="flow"/);
+  assert.match(sidebar, /data-view="sequence"/);
+  assert.match(sidebar, /data-view="project-api"/);
   assert.match(sidebar, /id="conversation-list"/);
   assert.match(sidebar, /id="theme-toggle"/);
-  assert.match(sidebar, /href="\/docs"/);
+  assert.match(sidebar, /id="diagnostics-toggle"/);
+  assert.doesNotMatch(sidebar, /href="\/docs"/);
   assert.doesNotMatch(html, /class="conversation-panel"/);
+  assert.match(html, /id="remove-project"/);
 });
 
 
@@ -54,10 +63,11 @@ test('selecting a recent conversation requests the chat view', async () => {
 });
 
 
-test('API documentation enables root page scrolling', async () => {
-  const html = await readFile(new URL('./docs.html', import.meta.url), 'utf8');
-  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+test('chat header exposes model selection and comparison mode', async () => {
+  const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
 
-  assert.match(html, /<html[^>]*class="docs-root"/);
-  assert.match(css, /html\.docs-root[^}]*overflow-y:\s*auto/s);
+  assert.match(html, /id="chat-model"/);
+  assert.match(html, /id="compare-models"/);
+  assert.match(html, /id="model-settings"/);
+  assert.match(html, /id="comparison-results"/);
 });

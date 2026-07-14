@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from app.api.serializers import serialize
 from app.dependencies import AppContainer, get_container
 from app.domain.errors import ResourceNotFound
+from app.infrastructure.retrieval.project import project_namespace
 
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -36,9 +37,19 @@ def get_project(project_id: str, container: AppContainer = Depends(get_container
 
 
 @router.delete("/{project_id}")
-def delete_project(project_id: str, container: AppContainer = Depends(get_container)):
+async def delete_project(project_id: str, container: AppContainer = Depends(get_container)):
+    chunks = container.project_analysis.list_chunks(project_id)
+    warnings = []
+    if chunks:
+        try:
+            await container.vector_index.delete(
+                project_namespace(project_id),
+                [item.vector_id or item.id for item in chunks],
+            )
+        except Exception:
+            warnings.append("project_vector_delete_unavailable")
     container.project_use_case.delete(project_id)
-    return {"success": True}
+    return {"success": True, "warnings": warnings}
 
 
 @router.post("/{project_id}/scan")

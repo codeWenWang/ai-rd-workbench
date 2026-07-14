@@ -1,4 +1,6 @@
-import { api, errorText, listFrom, streamChat } from './api.js?v=20260713.4';
+import { api, errorText, listFrom, streamChat } from './api.js?v=20260714.1';
+import { activeProjectId } from './projects.js?v=20260714.1';
+import { comparisonModelIds, selectedModelId } from './models.js?v=20260714.1';
 
 const stageNames = {
   receive_query: '接收问题', understand_query: '理解问题', retrieving: '检索资料', retrieve_context: '检索资料',
@@ -80,6 +82,9 @@ function normalizeCitation(citation, index) {
     page: value(citation, 'page_number', 'page'),
     excerpt: value(citation, 'excerpt', 'content', 'text', 'snippet') || '暂无原文片段',
     chunkId: value(citation, 'chunk_id', 'id'),
+    relativePath: value(citation, 'relative_path'),
+    startLine: value(citation, 'start_line'),
+    endLine: value(citation, 'end_line'),
   };
 }
 
@@ -160,10 +165,13 @@ function messageNode(message) {
 }
 
 function showCitation(citation) {
+  const location = citation.relativePath
+    ? `${citation.relativePath}${citation.startLine ? `:${citation.startLine}${citation.endLine && citation.endLine !== citation.startLine ? `-${citation.endLine}` : ''}` : ''}`
+    : '无';
   ui.openDrawer({
     eyebrow: `引用 ${citation.id}`,
     title: citation.title,
-    html: `<div class="drawer-section"><h3>来源信息</h3><div class="drawer-fields"><div><span>分类</span><strong>${ui.escape(citation.category)}</strong></div><div><span>页码</span><strong>${citation.page ? `第 ${citation.page} 页` : '无'}</strong></div><div><span>片段 ID</span><strong>${ui.escape(citation.chunkId || '无')}</strong></div></div></div><div class="drawer-section"><h3>原文片段</h3><div class="source-text">${ui.escape(citation.excerpt)}</div></div>`,
+    html: `<div class="drawer-section"><h3>来源信息</h3><div class="drawer-fields"><div><span>分类</span><strong>${ui.escape(citation.category)}</strong></div><div><span>源码位置</span><strong>${ui.escape(location)}</strong></div><div><span>页码</span><strong>${citation.page ? `第 ${citation.page} 页` : '无'}</strong></div><div><span>片段 ID</span><strong>${ui.escape(citation.chunkId || '无')}</strong></div></div></div><div class="drawer-section"><h3>原文片段</h3><div class="source-text">${ui.escape(citation.excerpt)}</div></div>`,
   });
 }
 
@@ -181,7 +189,7 @@ function showConversationError(error) {
 
 async function loadConversations({ select = true } = {}) {
   try {
-    const payload = await api.conversations();
+    const payload = await api.conversations(activeProjectId());
     state.conversations = listFrom(payload, ['conversations', 'items', 'data']);
     el('conversation-error').classList.add('hidden');
     if (state.activeId && !state.conversations.some(item => conversationId(item) === state.activeId)) {
@@ -235,7 +243,7 @@ async function createConversation() {
   const button = el('new-conversation');
   ui.busy(button, true);
   try {
-    const payload = await api.createConversation();
+    const payload = await api.createConversation(activeProjectId());
     state.activeId = value(payload, 'conversation_id', 'session_id', 'id');
     if (!state.activeId) throw new Error('创建会话响应中缺少 ID');
     localStorage.setItem('conversation_id', state.activeId);
@@ -313,12 +321,23 @@ async function send(text) {
   ui.busy(el('send-message'), true);
   el('chat-input').disabled = true;
   try {
+    const compareIds = comparisonModelIds();
+    if (document.getElementById('compare-models').checked) {
+      if (compareIds.length !== 2) throw new Error('模型对比需要选择两个不同的模型');
+      await sendComparison(text, compareIds);
+      return;
+    }
     await ensureConversation();
     state.messages.push(normalizeMessage({ role: 'user', content: text, status: 'completed', prompt: text }));
     const assistant = appendAssistant();
     setStage('receive_query');
     try {
-      await streamChat({ message: text, session_id: state.activeId }, (event, data) => applyStreamEvent(assistant, event, data));
+      await streamChat({
+        message: text,
+        session_id: state.activeId,
+        project_id: activeProjectId() || null,
+        model_id: selectedModelId(),
+      }, (event, data) => applyStreamEvent(assistant, event, data));
       if (assistant.status === 'pending') {
         assistant.status = 'completed';
         updateMessage(assistant);
@@ -346,6 +365,23 @@ async function send(text) {
     el('chat-input').disabled = false;
     el('chat-input').focus();
   }
+}
+
+async function sendComparison(text, modelIds) {
+  const container = el('comparison-results');
+  container.classList.remove('hidden');
+  container.innerHTML = '<div class="loading-line">正在并行调用两个模型…</div>';
+  const payload = await api.compareModels({
+    message: text,
+    model_ids: modelIds,
+    project_id: activeProjectId() || null,
+  });
+  const items = listFrom(payload);
+  container.innerHTML = items.map(item => `
+    <article class="comparison-card ${item.error ? 'failed' : ''}">
+      <header><strong>${ui.escape(item.model_id)}</strong><span>${ui.escape(String(item.latency_ms || 0))} ms</span></header>
+      <div class="comparison-answer">${ui.escape(item.answer || item.error || '没有返回内容')}</div>
+    </article>`).join('');
 }
 
 function retryMessage(message) {
@@ -416,5 +452,13 @@ export async function initChat(sharedUi) {
     }
   });
   el('new-conversation').addEventListener('click', createConversation);
+  ui.on('project:changed', async () => {
+    if (state.sending) return;
+    state.activeId = '';
+    state.messages = [];
+    localStorage.removeItem('conversation_id');
+    renderMessages();
+    await loadConversations();
+  });
   await loadConversations();
 }

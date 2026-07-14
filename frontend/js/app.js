@@ -1,7 +1,10 @@
-import { initChat } from './chat.js?v=20260713.4';
-import { initDocuments } from './documents.js?v=20260713.4';
-import { initMemories } from './memories.js?v=20260713.4';
-import { initDiagnostics } from './diagnostics.js?v=20260713.4';
+import { initChat } from './chat.js?v=20260714.1';
+import { initDocuments } from './documents.js?v=20260714.1';
+import { initMemories } from './memories.js?v=20260714.1';
+import { initDiagnostics } from './diagnostics.js?v=20260714.1';
+import { initProjects } from './projects.js?v=20260714.1';
+import { initArtifacts } from './artifacts.js?v=20260714.1';
+import { initModels } from './models.js?v=20260714.1';
 
 const eventBus = new EventTarget();
 const el = id => document.getElementById(id);
@@ -139,9 +142,14 @@ function formDialog({ title, submitText = '确认', fields = [] }) {
   dialog.showModal();
   requestAnimationFrame(() => body.querySelector('input:not([type=file]),textarea,select')?.focus());
   return new Promise(resolve => {
+    const cancelButtons = [...form.querySelectorAll('[value="cancel"]')];
     const cleanup = () => {
       form.removeEventListener('submit', submit);
       dialog.removeEventListener('cancel', cancel);
+      cancelButtons.forEach(button => button.removeEventListener('click', cancelClick));
+    };
+    const cancelClick = event => {
+      event.preventDefault(); cleanup(); dialog.close('cancel'); resolve(null);
     };
     const submit = event => {
       event.preventDefault();
@@ -157,6 +165,7 @@ function formDialog({ title, submitText = '确认', fields = [] }) {
     };
     form.addEventListener('submit', submit);
     dialog.addEventListener('cancel', cancel);
+    cancelButtons.forEach(button => button.addEventListener('click', cancelClick));
   });
 }
 
@@ -172,9 +181,14 @@ function confirmDialog(title, message, submitText = '确认') {
   dialog.showModal();
   el('dialog-submit').focus();
   return new Promise(resolve => {
+    const cancelButtons = [...form.querySelectorAll('[value="cancel"]')];
     const cleanup = () => {
       form.removeEventListener('submit', submit);
       dialog.removeEventListener('cancel', cancel);
+      cancelButtons.forEach(button => button.removeEventListener('click', cancelClick));
+    };
+    const cancelClick = event => {
+      event.preventDefault(); cleanup(); dialog.close('cancel'); resolve(false);
     };
     const submit = event => {
       event.preventDefault();
@@ -186,6 +200,7 @@ function confirmDialog(title, message, submitText = '确认') {
     };
     form.addEventListener('submit', submit);
     dialog.addEventListener('cancel', cancel);
+    cancelButtons.forEach(button => button.addEventListener('click', cancelClick));
   });
 }
 
@@ -235,6 +250,7 @@ async function initialize() {
   setSidebarCollapsed(localStorage.getItem(SIDEBAR_KEY) === 'true');
   document.querySelectorAll('button.nav-item[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
   el('theme-toggle').addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+  el('diagnostics-toggle').addEventListener('click', () => switchView('diagnostics'));
   el('sidebar-collapse').addEventListener('click', () => {
     if (matchMedia('(max-width: 760px)').matches) closeMobileSidebar();
     else setSidebarCollapsed(!el('app-shell').classList.contains('sidebar-collapsed'));
@@ -254,10 +270,16 @@ async function initialize() {
     }
   });
   const requested = location.hash.slice(1);
-  if (['chat', 'knowledge', 'memories', 'diagnostics'].includes(requested)) switchView(requested);
-  const results = await Promise.allSettled([initChat(ui), initDocuments(ui), initMemories(ui), initDiagnostics(ui)]);
+  const allowedViews = ['chat', 'overview', 'architecture', 'flow', 'sequence', 'project-api', 'knowledge', 'memories', 'diagnostics'];
+  if (allowedViews.includes(requested)) switchView(requested);
+  const projectResult = await Promise.allSettled([initProjects(ui)]);
+  if (projectResult[0].status === 'rejected') console.error('projects', projectResult[0].reason);
+  const results = await Promise.allSettled([
+    initChat(ui), initArtifacts(ui), initModels(ui),
+    initDocuments(ui), initMemories(ui), initDiagnostics(ui),
+  ]);
   results.forEach((result, index) => {
-    if (result.status === 'rejected') console.error(['chat', 'documents', 'memories', 'diagnostics'][index], result.reason);
+    if (result.status === 'rejected') console.error(['chat', 'artifacts', 'models', 'documents', 'memories', 'diagnostics'][index], result.reason);
   });
 }
 

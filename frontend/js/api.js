@@ -131,8 +131,8 @@ export async function streamChat(body, onEvent) {
 }
 
 export const api = {
-  conversations: () => request('/api/conversations'),
-  createConversation: () => request('/api/chat/session', { method: 'POST' }),
+  conversations: projectId => request(`/api/conversations?${new URLSearchParams(projectId ? { project_id: projectId } : {})}`),
+  createConversation: projectId => request('/api/chat/session', { method: 'POST', json: projectId ? { project_id: projectId } : {} }),
   messages: id => request(`/api/conversations/${encodeURIComponent(id)}/messages`),
   renameConversation: (id, title) => request(`/api/conversations/${encodeURIComponent(id)}`, { method: 'PATCH', json: { title } }),
   deleteConversation: id => request(`/api/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
@@ -155,6 +155,18 @@ export const api = {
   live: () => request('/api/health/live', { timeout: 7000 }),
   ready: () => request('/api/health/ready', { timeout: 10000 }),
   diagnostics: () => request('/api/diagnostics', { timeout: 15000 }),
+  projects: () => request('/api/projects'),
+  project: id => request(`/api/projects/${encodeURIComponent(id)}`),
+  createProject: body => request('/api/projects', { method: 'POST', json: body }),
+  deleteProject: id => request(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  scanProject: id => request(`/api/projects/${encodeURIComponent(id)}/scan`, { method: 'POST', timeout: 180000 }),
+  projectFiles: id => request(`/api/projects/${encodeURIComponent(id)}/files`),
+  artifacts: id => request(`/api/projects/${encodeURIComponent(id)}/artifacts`),
+  generateArtifact: (id, type) => request(`/api/projects/${encodeURIComponent(id)}/artifacts/${encodeURIComponent(type)}`, { method: 'POST', timeout: 120000 }),
+  modelProviders: () => request('/api/model-providers'),
+  createModelProvider: body => request('/api/model-providers', { method: 'POST', json: body }),
+  deleteModelProvider: id => request(`/api/model-providers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  compareModels: body => request('/api/models/compare', { method: 'POST', json: body, timeout: 180000 }),
 };
 
 export function errorText(error) {

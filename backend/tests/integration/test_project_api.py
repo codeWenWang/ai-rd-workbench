@@ -19,12 +19,13 @@ class FakeEmbeddings:
 class FakeVectorIndex:
     def __init__(self):
         self.upserts = []
+        self.deletes = []
 
     async def upsert(self, namespace, chunks):
         self.upserts.append((namespace, chunks))
 
     async def delete(self, namespace, vector_ids):
-        return None
+        self.deletes.append((namespace, vector_ids))
 
     async def query(self, namespace, vector, limit):
         return []
@@ -121,3 +122,19 @@ def test_model_comparison_api_returns_two_independent_answers(tmp_path: Path) ->
 
     assert result.status_code == 200
     assert [item["answer"] for item in result.json()["items"]] == ["回答 A", "回答 B"]
+
+
+def test_delete_project_removes_project_vectors_before_local_data(tmp_path: Path) -> None:
+    source = tmp_path / "delete-source"
+    source.mkdir()
+    (source / "main.py").write_text("value = 1", encoding="utf-8")
+    client = make_client(tmp_path)
+    project = client.post("/api/projects", json={"name": "delete", "root_path": str(source)}).json()
+    client.post(f"/api/projects/{project['id']}/scan")
+    vector_index = client.app.state.container.vector_index
+
+    result = client.delete(f"/api/projects/{project['id']}")
+
+    assert result.status_code == 200
+    assert vector_index.deletes[0][0] == f"project_{project['id']}"
+    assert vector_index.deletes[0][1]

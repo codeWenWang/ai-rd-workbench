@@ -78,3 +78,33 @@ def test_project_full_text_search_returns_source_location(analyzed_project) -> N
     assert results
     assert results[0].relative_path == "api.py"
     assert results[0].start_line == 1
+
+
+def test_project_search_accepts_user_question_punctuation(analyzed_project) -> None:
+    _, _, analysis, project = analyzed_project
+
+    results = analysis.search_chunks(project.id, "load_items 是什么？", limit=5)
+
+    assert results and results[0].relative_path == "api.py"
+
+
+def test_large_source_file_is_split_into_embedding_sized_chunks(tmp_path: Path) -> None:
+    root = tmp_path / "large-source"
+    root.mkdir()
+    (root / "large.py").write_text(
+        "\n".join(f"value_{index} = {index}" for index in range(1200)),
+        encoding="utf-8",
+    )
+    database = Database(f"sqlite:///{(tmp_path / 'large.db').as_posix()}")
+    database.create_schema()
+    projects = SqliteProjectRepository(database.session_factory)
+    analysis = SqliteProjectAnalysisRepository(database.session_factory)
+    project = projects.create(name="large", root_path=str(root))
+
+    ProjectAnalysisUseCase(
+        projects, analysis, LocalProjectScanner(), ParserRegistry()
+    ).scan(project.id)
+    chunks = analysis.list_chunks(project.id)
+
+    assert len(chunks) > 1
+    assert max(len(item.content) for item in chunks) <= 5000

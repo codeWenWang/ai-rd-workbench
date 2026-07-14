@@ -1,4 +1,4 @@
-import { api, errorText } from './api.js?v=20260713.4';
+import { api, errorText } from './api.js?v=20260714.1';
 
 let ui;
 const el=id=>document.getElementById(id);

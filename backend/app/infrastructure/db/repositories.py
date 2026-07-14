@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -245,32 +246,34 @@ class SqliteProjectAnalysisRepository(RepositoryBase):
                         id=_id(), project_id=project_id, source_path=scanned.relative_path,
                         target=target, kind="call", inferred=True,
                     ))
-                chunk_id = sha256(
-                    f"{project_id}:{scanned.relative_path}:{scanned.content_hash}".encode("utf-8")
-                ).hexdigest()
-                line_count = max(1, scanned.content.count("\n") + 1)
-                session.add(ProjectChunkModel(
-                    id=chunk_id,
-                    project_id=project_id,
-                    project_file_id=file_id,
-                    relative_path=scanned.relative_path,
-                    content=scanned.content,
-                    start_line=1,
-                    end_line=line_count,
-                    vector_id=chunk_id,
-                ))
-                session.execute(
-                    text(
-                        "INSERT INTO project_chunks_fts(chunk_id,project_id,content,relative_path) "
-                        "VALUES(:chunk_id,:project_id,:content,:relative_path)"
-                    ),
-                    {
-                        "chunk_id": chunk_id,
-                        "project_id": project_id,
-                        "content": scanned.content,
-                        "relative_path": scanned.relative_path,
-                    },
-                )
+                for chunk_index, (chunk_content, start_line, end_line) in enumerate(
+                    _split_source(scanned.content)
+                ):
+                    chunk_id = sha256(
+                        f"{project_id}:{scanned.relative_path}:{scanned.content_hash}:{chunk_index}".encode("utf-8")
+                    ).hexdigest()
+                    session.add(ProjectChunkModel(
+                        id=chunk_id,
+                        project_id=project_id,
+                        project_file_id=file_id,
+                        relative_path=scanned.relative_path,
+                        content=chunk_content,
+                        start_line=start_line,
+                        end_line=end_line,
+                        vector_id=chunk_id,
+                    ))
+                    session.execute(
+                        text(
+                            "INSERT INTO project_chunks_fts(chunk_id,project_id,content,relative_path) "
+                            "VALUES(:chunk_id,:project_id,:content,:relative_path)"
+                        ),
+                        {
+                            "chunk_id": chunk_id,
+                            "project_id": project_id,
+                            "content": chunk_content,
+                            "relative_path": scanned.relative_path,
+                        },
+                    )
 
     def list_files(self, project_id: str) -> list[ProjectFile]:
         with self.sessions() as session:
@@ -316,6 +319,9 @@ class SqliteProjectAnalysisRepository(RepositoryBase):
             ) for row in rows]
 
     def search_chunks(self, project_id: str, query: str, limit: int = 6) -> list[ProjectChunk]:
+        fts_query = _fts_query(query)
+        if not fts_query:
+            return []
         with self.sessions() as session:
             rows = session.execute(text(
                 "SELECT pc.id,pc.project_id,pc.project_file_id,pc.relative_path,pc.content,"
@@ -323,7 +329,7 @@ class SqliteProjectAnalysisRepository(RepositoryBase):
                 "FROM project_chunks_fts f JOIN project_chunks pc ON pc.id=f.chunk_id "
                 "WHERE f.project_id=:project_id AND project_chunks_fts MATCH :query "
                 "ORDER BY bm25(project_chunks_fts) LIMIT :limit"
-            ), {"project_id": project_id, "query": query, "limit": limit}).mappings()
+            ), {"project_id": project_id, "query": fts_query, "limit": limit}).mappings()
             return [ProjectChunk(**dict(row)) for row in rows]
 
     def list_chunks(self, project_id: str) -> list[ProjectChunk]:
@@ -743,3 +749,36 @@ def _insert_fts(session: Session, chunk: Chunk, resource_type: ResourceType) -> 
                          "VALUES(:id,:content,:title,:category,:resource_type)"),
                     {"id": chunk.id, "content": chunk.content, "title": chunk.title or "",
                      "category": chunk.category or "", "resource_type": resource_type.value})
+
+
+def _split_source(content: str, max_chars: int = 4000):
+    lines = content.splitlines(keepends=True) or [content]
+    output = []
+    current: list[str] = []
+    current_size = 0
+    start_line = 1
+    for line_number, line in enumerate(lines, start=1):
+        if current and current_size + len(line) > max_chars:
+            output.append(("".join(current), start_line, line_number - 1))
+            current = []
+            current_size = 0
+            start_line = line_number
+        if len(line) > max_chars:
+            if current:
+                output.append(("".join(current), start_line, line_number - 1))
+                current = []
+                current_size = 0
+            for offset in range(0, len(line), max_chars):
+                output.append((line[offset:offset + max_chars], line_number, line_number))
+            start_line = line_number + 1
+            continue
+        current.append(line)
+        current_size += len(line)
+    if current:
+        output.append(("".join(current), start_line, len(lines)))
+    return output or [("", 1, 1)]
+
+
+def _fts_query(query: str) -> str:
+    tokens = re.findall(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+", query)
+    return " OR ".join(f'"{item}"' for item in tokens[:12])

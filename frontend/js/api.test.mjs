@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseApiError, parseSSEChunk } from './api.js';
+import { api, parseApiError, parseSSEChunk } from './api.js';
 
 assert.deepEqual(parseApiError({ code: 'MODEL_DOWN', message: '模型不可用', request_id: 'req-1' }, 503), {
   code: 'MODEL_DOWN',
@@ -25,5 +25,11 @@ assert.deepEqual(parsed.events, [
   { event: 'message', data: { type: 'done' } },
 ]);
 assert.equal(parsed.remainder, 'event: token\ndata: {"token":"未完成');
+
+for (const name of [
+  'projects', 'createProject', 'scanProject', 'projectFiles',
+  'artifacts', 'generateArtifact', 'modelProviders',
+  'createModelProvider', 'compareModels',
+]) assert.equal(typeof api[name], 'function', `${name} API helper missing`);
 
 console.log('api contract tests passed');
