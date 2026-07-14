@@ -23,6 +23,10 @@ from app.domain.entities import (
     Message,
     MessageStatus,
     Project,
+    ProjectFile,
+    ProjectRelation,
+    ProjectRoute,
+    ProjectSymbol,
     ResourceStatus,
     ResourceType,
     ScoredChunk,
@@ -38,6 +42,10 @@ from app.infrastructure.db.models import (
     MessageModel,
     MigrationRecordModel,
     ProjectModel,
+    ProjectFileModel,
+    ProjectRelationModel,
+    ProjectRouteModel,
+    ProjectSymbolModel,
 )
 
 
@@ -84,6 +92,25 @@ class SqliteProjectRepository(RepositoryBase):
                 raise ResourceNotFound("project not found")
             session.delete(row)
 
+    def update_scan(
+        self,
+        project_id: str,
+        *,
+        revision: str,
+        tech_stack: list[str],
+        status: str = "ready",
+    ) -> Project:
+        with self.sessions.begin() as session:
+            row = session.get(ProjectModel, project_id)
+            if not row:
+                raise ResourceNotFound("project not found")
+            row.source_revision = revision
+            row.tech_stack_json = json.dumps(tech_stack, ensure_ascii=False)
+            row.status = status
+            row.last_scanned_at = _now()
+            row.updated_at = _now()
+        return self._entity(row)
+
     @staticmethod
     def _entity(row: ProjectModel) -> Project:
         return Project(
@@ -98,6 +125,94 @@ class SqliteProjectRepository(RepositoryBase):
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
+
+
+class SqliteProjectAnalysisRepository(RepositoryBase):
+    def replace_scan(self, project_id: str, items) -> None:
+        with self.sessions.begin() as session:
+            if not session.get(ProjectModel, project_id):
+                raise ResourceNotFound("project not found")
+            session.execute(delete(ProjectRouteModel).where(ProjectRouteModel.project_id == project_id))
+            session.execute(delete(ProjectSymbolModel).where(ProjectSymbolModel.project_id == project_id))
+            session.execute(delete(ProjectRelationModel).where(ProjectRelationModel.project_id == project_id))
+            session.execute(delete(ProjectFileModel).where(ProjectFileModel.project_id == project_id))
+            for scanned, parsed in items:
+                file_id = _id()
+                session.add(ProjectFileModel(
+                    id=file_id,
+                    project_id=project_id,
+                    relative_path=scanned.relative_path,
+                    language=scanned.language,
+                    content_hash=scanned.content_hash,
+                    content=scanned.content,
+                    size_bytes=scanned.size_bytes,
+                    modified_ns=scanned.modified_ns,
+                ))
+                for symbol in parsed.symbols:
+                    session.add(ProjectSymbolModel(
+                        id=_id(), project_id=project_id, project_file_id=file_id,
+                        name=symbol.name, kind=symbol.kind, line_number=symbol.line_number,
+                        end_line_number=symbol.end_line_number,
+                    ))
+                for route in parsed.routes:
+                    session.add(ProjectRouteModel(
+                        id=_id(), project_id=project_id, project_file_id=file_id,
+                        method=route.method, path=route.path, handler=route.handler,
+                        line_number=route.line_number,
+                    ))
+                for target in parsed.imports:
+                    session.add(ProjectRelationModel(
+                        id=_id(), project_id=project_id, source_path=scanned.relative_path,
+                        target=target, kind="import", inferred=False,
+                    ))
+                for target in parsed.calls:
+                    session.add(ProjectRelationModel(
+                        id=_id(), project_id=project_id, source_path=scanned.relative_path,
+                        target=target, kind="call", inferred=True,
+                    ))
+
+    def list_files(self, project_id: str) -> list[ProjectFile]:
+        with self.sessions() as session:
+            rows = session.scalars(
+                select(ProjectFileModel).where(ProjectFileModel.project_id == project_id)
+                .order_by(ProjectFileModel.relative_path)
+            )
+            return [ProjectFile(
+                row.id, row.project_id, row.relative_path, row.language,
+                row.content_hash, row.content, row.size_bytes, row.modified_ns,
+            ) for row in rows]
+
+    def list_symbols(self, project_id: str) -> list[ProjectSymbol]:
+        with self.sessions() as session:
+            rows = session.scalars(
+                select(ProjectSymbolModel).where(ProjectSymbolModel.project_id == project_id)
+                .order_by(ProjectSymbolModel.name, ProjectSymbolModel.line_number)
+            )
+            return [ProjectSymbol(
+                row.id, row.project_id, row.project_file_id, row.name, row.kind,
+                row.line_number, row.end_line_number,
+            ) for row in rows]
+
+    def list_routes(self, project_id: str) -> list[ProjectRoute]:
+        with self.sessions() as session:
+            rows = session.scalars(
+                select(ProjectRouteModel).where(ProjectRouteModel.project_id == project_id)
+                .order_by(ProjectRouteModel.path, ProjectRouteModel.method)
+            )
+            return [ProjectRoute(
+                row.id, row.project_id, row.project_file_id, row.method, row.path,
+                row.handler, row.line_number,
+            ) for row in rows]
+
+    def list_relations(self, project_id: str) -> list[ProjectRelation]:
+        with self.sessions() as session:
+            rows = session.scalars(
+                select(ProjectRelationModel).where(ProjectRelationModel.project_id == project_id)
+                .order_by(ProjectRelationModel.source_path, ProjectRelationModel.kind, ProjectRelationModel.target)
+            )
+            return [ProjectRelation(
+                row.id, row.project_id, row.source_path, row.target, row.kind, row.inferred,
+            ) for row in rows]
 
 
 class SqliteConversationRepository(RepositoryBase):

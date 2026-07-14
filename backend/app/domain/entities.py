@@ -118,6 +118,61 @@ class Project:
 
 
 @dataclass(slots=True)
+class ProjectFile:
+    id: str
+    project_id: str
+    relative_path: str
+    language: str
+    content_hash: str
+    content: str
+    size_bytes: int = 0
+    modified_ns: int = 0
+
+
+@dataclass(slots=True)
+class ProjectSymbol:
+    id: str
+    project_id: str
+    project_file_id: str
+    name: str
+    kind: str
+    line_number: int
+    end_line_number: int | None = None
+
+
+@dataclass(slots=True)
+class ProjectRoute:
+    id: str
+    project_id: str
+    project_file_id: str
+    method: str
+    path: str
+    handler: str
+    line_number: int
+
+
+@dataclass(slots=True)
+class ProjectRelation:
+    id: str
+    project_id: str
+    source_path: str
+    target: str
+    kind: str
+    inferred: bool = False
+
+
+@dataclass(slots=True)
+class ProjectScanSummary:
+    project_id: str
+    revision: str
+    file_count: int
+    symbol_count: int
+    route_count: int
+    relation_count: int
+    skipped_count: int = 0
+
+
+@dataclass(slots=True)
 class Message:
     id: str
     conversation_id: str

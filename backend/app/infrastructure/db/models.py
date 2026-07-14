@@ -39,6 +39,58 @@ class ProjectModel(Base):
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
 
+class ProjectFileModel(Base):
+    __tablename__ = "project_files"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    relative_path: Mapped[str] = mapped_column(String(1000))
+    language: Mapped[str] = mapped_column(String(50), index=True)
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    modified_ns: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    __table_args__ = (UniqueConstraint("project_id", "relative_path"),)
+
+
+class ProjectSymbolModel(Base):
+    __tablename__ = "project_symbols"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(36), index=True)
+    project_file_id: Mapped[str] = mapped_column(
+        ForeignKey("project_files.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(500), index=True)
+    kind: Mapped[str] = mapped_column(String(50), index=True)
+    line_number: Mapped[int] = mapped_column(Integer)
+    end_line_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class ProjectRouteModel(Base):
+    __tablename__ = "project_routes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(36), index=True)
+    project_file_id: Mapped[str] = mapped_column(
+        ForeignKey("project_files.id", ondelete="CASCADE"), index=True
+    )
+    method: Mapped[str] = mapped_column(String(10), index=True)
+    path: Mapped[str] = mapped_column(String(1000), index=True)
+    handler: Mapped[str] = mapped_column(String(500))
+    line_number: Mapped[int] = mapped_column(Integer)
+
+
+class ProjectRelationModel(Base):
+    __tablename__ = "project_relations"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(36), index=True)
+    source_path: Mapped[str] = mapped_column(String(1000), index=True)
+    target: Mapped[str] = mapped_column(String(1000), index=True)
+    kind: Mapped[str] = mapped_column(String(50), index=True)
+    inferred: Mapped[bool] = mapped_column(default=False)
+
+
 class MessageModel(Base):
     __tablename__ = "messages"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
