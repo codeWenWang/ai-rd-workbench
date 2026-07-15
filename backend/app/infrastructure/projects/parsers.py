@@ -173,7 +173,7 @@ class JavaSourceParser:
         for match in self.MAPPING_RE.finditer(annotations):
             annotation = match.group(1)
             args = match.group("args") or ""
-            paths = re.findall(r"['\"]([^'\"]+)['\"]", args) or [""]
+            paths = _mapping_paths(args)
             if annotation == "RequestMapping":
                 methods = re.findall(r"RequestMethod\.([A-Z]+)", args) or [default_method]
             else:
@@ -260,3 +260,23 @@ def _unique(values: list[str]) -> list[str]:
 def _join_route_paths(prefix: str, path: str) -> str:
     parts = [item.strip("/") for item in (prefix, path) if item and item != "/"]
     return "/" + "/".join(parts) if parts else "/"
+
+
+def _mapping_paths(args: str) -> list[str]:
+    explicit = re.search(
+        r"(?:value|path)\s*=\s*(\{[^}]*\}|['\"][^'\"]*['\"])",
+        args,
+    )
+    if explicit:
+        expression = explicit.group(1)
+    else:
+        stripped = args.strip()
+        if stripped.startswith("{") and "}" in stripped:
+            expression = stripped[:stripped.index("}") + 1]
+        elif stripped.startswith(("'", '"')):
+            quote = stripped[0]
+            closing = stripped.find(quote, 1)
+            expression = stripped[:closing + 1] if closing > 0 else ""
+        else:
+            expression = ""
+    return re.findall(r"['\"]([^'\"]+)['\"]", expression) or [""]

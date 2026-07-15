@@ -43,7 +43,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/repository/{name}")
 public class RepositoryContentController {
-    @GetMapping("/**")
+    @GetMapping(value = "/**", produces = "application/json")
     public String download() {
         return RepositoryService.load();
     }
