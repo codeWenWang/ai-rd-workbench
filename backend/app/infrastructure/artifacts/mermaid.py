@@ -34,15 +34,19 @@ def render_flow(insight) -> str:
             f'    {handler_id}["{_label(endpoint.handler)}<br/>{_label(endpoint.source_path)}:{endpoint.line_number}"]'
         )
         lines.append(f"    client --> {entry_id} --> {handler_id}")
-        current = handler_id
-        for index, module_name in enumerate(_dependency_path(endpoint.module, modules)):
+        dependency_nodes = []
+        for index, module_name in enumerate(_relevant_dependencies(endpoint, modules)):
             module = modules[module_name]
             node_id = f"step_{index}_{_node_id(module_name)}"
             lines.append(f'    {node_id}["{_label(module.name)} · {_label(module.role)}"]')
-            lines.append(f"    {current} --> {node_id}")
-            current = node_id
+            lines.append(f"    {handler_id} --> {node_id}")
+            dependency_nodes.append(node_id)
         lines.append('    response["返回响应"]')
-        lines.append(f"    {current} --> response")
+        if dependency_nodes:
+            for node_id in dependency_nodes:
+                lines.append(f"    {node_id} -.-> response")
+        else:
+            lines.append(f"    {handler_id} --> response")
     elif insight.modules:
         ordered = _ordered_modules(insight.modules)
         previous = "client"
@@ -69,14 +73,13 @@ def render_sequence(insight) -> str:
         lines.append(f"    participant {handler} as {_label(endpoint.handler)}")
         lines.append(f"    U->>{entry}: {endpoint.method} {_label(endpoint.path)}")
         lines.append(f"    {entry}->>{handler}: 调用处理器")
-        previous = handler
-        for index, module_name in enumerate(_dependency_path(endpoint.module, modules)):
+        for index, module_name in enumerate(_relevant_dependencies(endpoint, modules)):
             participant = f"M{index}"
             module = modules[module_name]
             lines.append(f"    participant {participant} as {_label(module.name)} · {_label(module.role)}")
-            lines.append(f"    {previous}->>{participant}: 模块调用")
-            previous = participant
-        lines.append(f"    {previous}-->>{entry}: 返回结果")
+            lines.append(f"    {handler}->>{participant}: 模块依赖推断")
+            lines.append(f"    {participant}-->>{handler}: 返回")
+        lines.append(f"    {handler}-->>{entry}: 返回结果")
         lines.append(f"    {entry}-->>U: HTTP 响应")
         lines.append(f"    Note over U,{entry}: 源码证据 {_label(endpoint.source_path)}:{endpoint.line_number}")
     elif insight.modules:
@@ -97,27 +100,36 @@ def _representative_endpoint(insight):
     if not insight.endpoints:
         return None
     priorities = ("/repository", "/api", "/v2", "/internal", "/")
+    method_priority = {"GET": 0, "POST": 1, "PUT": 2, "PATCH": 3, "DELETE": 4, "HEAD": 5, "ANY": 6}
     return min(
         insight.endpoints,
         key=lambda item: (
             next((index for index, prefix in enumerate(priorities) if item.path.startswith(prefix)), len(priorities)),
-            len(item.path), item.path, item.method,
+            len(item.path), item.path, method_priority.get(item.method, 9), item.handler,
         ),
     )
 
 
-def _dependency_path(start: str, modules: dict) -> list[str]:
-    if start not in modules:
+def _relevant_dependencies(endpoint, modules: dict) -> list[str]:
+    if endpoint.module not in modules:
         return []
-    result = []
-    queue = list(modules[start].dependencies)
-    while queue and len(result) < 5:
-        name = queue.pop(0)
-        if name in result or name == start or name not in modules:
+    role_priority = {
+        "核心": 0, "协议适配": 1, "持久化": 2, "存储": 3,
+        "功能模块": 4, "入口服务": 5, "界面": 8, "迁移": 8, "测试": 9,
+    }
+    context = f"{endpoint.path} {endpoint.handler}".casefold()
+    candidates = []
+    for name in modules[endpoint.module].dependencies:
+        module = modules.get(name)
+        if not module or module.role in {"界面", "迁移", "测试"}:
             continue
-        result.append(name)
-        queue.extend(modules[name].dependencies)
-    return result
+        if module.role == "协议适配":
+            protocol = name.casefold().replace("protocol-", "").replace("protocol_", "")
+            if protocol and protocol not in context:
+                continue
+        candidates.append(module)
+    candidates.sort(key=lambda item: (role_priority.get(item.role, 7), item.name))
+    return [item.name for item in candidates[:5]]
 
 
 def _ordered_modules(modules):

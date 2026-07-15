@@ -70,10 +70,15 @@ class ProjectInsightBuilder:
         ]
 
         endpoints = []
+        seen_endpoints = set()
         for route in routes:
             source = file_by_id.get(route.project_file_id)
             if not source:
                 continue
+            key = (route.method, route.path, route.handler, source.relative_path, route.line_number)
+            if key in seen_endpoints:
+                continue
+            seen_endpoints.add(key)
             endpoints.append(ProjectEndpointInsight(
                 method=route.method,
                 path=route.path,

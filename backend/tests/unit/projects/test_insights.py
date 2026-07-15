@@ -67,3 +67,13 @@ def test_insight_falls_back_to_high_value_top_level_directories() -> None:
 
     assert [module.name for module in insight.modules] == ["backend", "frontend"]
     assert insight.project_type == "Python / JavaScript"
+
+
+def test_insight_deduplicates_equivalent_endpoints() -> None:
+    files = [project_file("api", "server/Api.java", "java", "class Api {}")]
+    duplicate = ProjectRoute("one", "project", "api", "GET", "/items", "Api.items", 10)
+    routes = [duplicate, ProjectRoute("two", "project", "api", "GET", "/items", "Api.items", 10)]
+
+    insight = ProjectInsightBuilder().build(files, routes, [])
+
+    assert len(insight.endpoints) == 1

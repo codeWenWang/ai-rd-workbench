@@ -124,6 +124,9 @@ def test_java_maven_artifacts_are_module_oriented_and_framework_neutral(tmp_path
         public class RepositoryController {
             @GetMapping("/items")
             public String items() { return "ok"; }
+
+            @DeleteMapping("/items")
+            public void deleteItem() {}
         }
     """, encoding="utf-8")
     database = Database(f"sqlite:///{(tmp_path / 'java-artifacts.db').as_posix()}")
@@ -147,6 +150,9 @@ def test_java_maven_artifacts_are_module_oriented_and_framework_neutral(tmp_path
     assert "GET /repository/items" in flow
     assert "RepositoryController.items" in flow
     assert "Spring MVC" in flow
+    assert "handler --> step_0_core" in flow
+    assert "handler --> step_1_storage_file" in flow
+    assert "step_0_core --> step_1_storage_file" not in flow
     assert "RepositoryController.items" in sequence
     assert "GET /repository/items" in sequence
     assert "Spring MVC" in api_docs
