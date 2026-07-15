@@ -53,6 +53,17 @@ test('project analysis navigation defaults closed and toggles locally', async ()
 });
 
 
+test('project analysis descriptions are module-oriented and framework-neutral', async () => {
+  const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
+
+  assert.match(html, /展示项目模块、职责与依赖关系/);
+  assert.match(html, /展示代表性入口到核心模块的主要路径/);
+  assert.match(html, /展示代表性场景中的组件调用顺序/);
+  assert.match(html, /来自静态分析的已识别接口/);
+  assert.doesNotMatch(html, /FastAPI 路由资料/);
+});
+
+
 test('project connection supports local GitHub and Gitee sources', async () => {
   const projectsSource = await readFile(new URL('./js/projects.js', import.meta.url), 'utf8');
   const apiSource = await readFile(new URL('./js/api.js', import.meta.url), 'utf8');
