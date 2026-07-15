@@ -88,6 +88,72 @@ def test_project_search_accepts_user_question_punctuation(analyzed_project) -> N
     assert results and results[0].relative_path == "api.py"
 
 
+def test_java_maven_artifacts_are_module_oriented_and_framework_neutral(tmp_path: Path) -> None:
+    root = tmp_path / "java-source"
+    for module in ("core", "storage-file", "server"):
+        (root / module / "src" / "main" / "java" / "demo").mkdir(parents=True)
+    (root / "pom.xml").write_text("""
+        <project><artifactId>demo</artifactId><modules>
+          <module>core</module><module>storage-file</module><module>server</module>
+        </modules></project>
+    """, encoding="utf-8")
+    (root / "core" / "pom.xml").write_text(
+        "<project><artifactId>demo-core</artifactId></project>", encoding="utf-8",
+    )
+    (root / "storage-file" / "pom.xml").write_text("""
+        <project><artifactId>demo-storage-file</artifactId><dependencies>
+          <dependency><artifactId>demo-core</artifactId></dependency>
+        </dependencies></project>
+    """, encoding="utf-8")
+    (root / "server" / "pom.xml").write_text("""
+        <project><artifactId>demo-server</artifactId><dependencies>
+          <dependency><artifactId>demo-core</artifactId></dependency>
+          <dependency><artifactId>demo-storage-file</artifactId></dependency>
+        </dependencies></project>
+    """, encoding="utf-8")
+    (root / "core" / "src" / "main" / "java" / "demo" / "RepositoryService.java").write_text(
+        "package demo; public class RepositoryService {}", encoding="utf-8",
+    )
+    (root / "server" / "src" / "main" / "java" / "demo" / "DemoApplication.java").write_text(
+        "@SpringBootApplication public class DemoApplication { public static void main(String[] args) {} }",
+        encoding="utf-8",
+    )
+    (root / "server" / "src" / "main" / "java" / "demo" / "RepositoryController.java").write_text("""
+        @RestController
+        @RequestMapping("/repository")
+        public class RepositoryController {
+            @GetMapping("/items")
+            public String items() { return "ok"; }
+        }
+    """, encoding="utf-8")
+    database = Database(f"sqlite:///{(tmp_path / 'java-artifacts.db').as_posix()}")
+    database.create_schema()
+    projects = SqliteProjectRepository(database.session_factory)
+    analysis = SqliteProjectAnalysisRepository(database.session_factory)
+    project = projects.create(name="java-demo", root_path=str(root))
+    ProjectAnalysisUseCase(
+        projects, analysis, LocalProjectScanner(), ParserRegistry()
+    ).scan(project.id)
+    artifacts = ArtifactUseCase(projects, analysis)
+
+    architecture = artifacts.generate(project.id, "architecture").content
+    flow = artifacts.generate(project.id, "flow").content
+    sequence = artifacts.generate(project.id, "sequence").content
+    api_docs = artifacts.generate(project.id, "api_docs").content
+
+    assert all(module in architecture for module in ("core", "server", "storage-file"))
+    assert "server --> core" in architecture
+    assert "server --> storage_file" in architecture
+    assert "GET /repository/items" in flow
+    assert "RepositoryController.items" in flow
+    assert "Spring MVC" in flow
+    assert "RepositoryController.items" in sequence
+    assert "GET /repository/items" in sequence
+    assert "Spring MVC" in api_docs
+    assert "server/src/main/java/demo/RepositoryController.java" in api_docs
+    assert "FastAPI" not in architecture + flow + sequence + api_docs
+
+
 def test_large_source_file_is_split_into_embedding_sized_chunks(tmp_path: Path) -> None:
     root = tmp_path / "large-source"
     root.mkdir()

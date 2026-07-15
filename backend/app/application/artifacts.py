@@ -5,6 +5,7 @@ from app.infrastructure.artifacts import (
     render_flow,
     render_sequence,
 )
+from app.infrastructure.projects.insights import ProjectInsightBuilder
 
 
 class ArtifactUseCase:
@@ -15,9 +16,10 @@ class ArtifactUseCase:
         "api_docs": "markdown",
     }
 
-    def __init__(self, projects, analysis) -> None:
+    def __init__(self, projects, analysis, insights=None) -> None:
         self.projects = projects
         self.analysis = analysis
+        self.insights = insights or ProjectInsightBuilder()
 
     def generate(self, project_id: str, artifact_type: str):
         if artifact_type not in self.FORMATS:
@@ -30,14 +32,15 @@ class ArtifactUseCase:
         files = self.analysis.list_files(project_id)
         routes = self.analysis.list_routes(project_id)
         relations = self.analysis.list_relations(project_id)
+        insight = self.insights.build(files, routes, relations)
         if artifact_type == "architecture":
-            content = render_architecture(files, relations)
+            content = render_architecture(insight)
         elif artifact_type == "flow":
-            content = render_flow(files, routes, relations)
+            content = render_flow(insight)
         elif artifact_type == "sequence":
-            content = render_sequence(files, routes, relations)
+            content = render_sequence(insight)
         else:
-            content = render_api_docs(project, files, routes)
+            content = render_api_docs(project, insight)
         return self.analysis.save_artifact(
             project_id=project_id,
             artifact_type=artifact_type,
