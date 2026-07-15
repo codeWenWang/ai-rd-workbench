@@ -54,6 +54,22 @@ class FixedModel:
         yield self.answer
 
 
+class PromptEchoModel:
+    async def ainvoke(self, messages):
+        return messages[0].content
+
+    async def astream(self, messages):
+        yield messages[0].content
+
+
+class UnavailableEmbeddings:
+    async def embed_documents(self, texts):
+        raise RuntimeError("embedding service unavailable")
+
+    async def embed_query(self, text):
+        raise RuntimeError("embedding service unavailable")
+
+
 class FakeRemoteGit:
     def __init__(self, cache_root: Path, warnings=None):
         self.cache_root = cache_root
@@ -136,6 +152,38 @@ def test_remote_project_scan_uses_cache_when_update_is_unavailable(tmp_path: Pat
     assert scanned.json()["file_count"] == 1
     assert scanned.json()["route_count"] == 1
     assert "remote_update_unavailable" in scanned.json()["warnings"]
+
+
+def test_remote_project_chat_uses_local_overview_when_semantic_services_are_unavailable(
+    tmp_path: Path,
+) -> None:
+    client = make_client(tmp_path)
+    container = client.app.state.container
+    container.embeddings = UnavailableEmbeddings()
+    container.chat_model = PromptEchoModel()
+    for name in ("project_indexer", "project_retriever", "graph", "chat_use_case"):
+        container.__dict__.pop(name, None)
+    project = client.post("/api/projects", json={
+        "name": "Gitee Q&A",
+        "source_type": "gitee",
+        "repository_url": "https://gitee.com/example/demo",
+    }).json()
+
+    scanned = client.post(f"/api/projects/{project['id']}/scan")
+    session = client.post(
+        "/api/chat/session", json={"project_id": project["id"]}
+    ).json()
+    response = client.post("/api/chat/stream", json={
+        "message": "简单介绍一下这个项目的主要技术栈",
+        "session_id": session["session_id"],
+        "project_id": project["id"],
+    })
+
+    assert "project_semantic_index_unavailable" in scanned.json()["warnings"]
+    assert response.status_code == 200
+    assert "项目名称：Gitee Q&A" in response.text
+    assert "已识别技术栈：python" in response.text
+    assert "project_semantic_retrieval_unavailable" in response.text
 
 
 def test_project_scan_artifacts_and_conversation_filter_flow(tmp_path: Path) -> None:

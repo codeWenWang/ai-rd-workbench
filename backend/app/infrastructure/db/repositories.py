@@ -374,6 +374,43 @@ class SqliteProjectAnalysisRepository(RepositoryBase):
                 row.content, row.start_line, row.end_line, row.vector_id,
             ) for row in rows]
 
+    def list_overview_chunks(self, project_id: str, limit: int = 4) -> list[ProjectChunk]:
+        important_names = (
+            "readme.md", "readme.rst", "readme.txt", "pom.xml", "package.json",
+            "pyproject.toml", "requirements.txt", "build.gradle", "build.gradle.kts",
+            "settings.gradle", "settings.gradle.kts", "composer.json", "go.mod",
+            "cargo.toml",
+        )
+        with self.sessions() as session:
+            rows = session.scalars(
+                select(ProjectChunkModel)
+                .where(
+                    ProjectChunkModel.project_id == project_id,
+                    func.lower(ProjectChunkModel.relative_path).in_(important_names),
+                )
+                .order_by(ProjectChunkModel.relative_path, ProjectChunkModel.start_line)
+                .limit(limit)
+            )
+            direct = list(rows)
+            if len(direct) < limit:
+                nested = list(session.scalars(
+                    select(ProjectChunkModel)
+                    .where(
+                        ProjectChunkModel.project_id == project_id,
+                        or_(*[
+                            func.lower(ProjectChunkModel.relative_path).like(f"%/{name}")
+                            for name in important_names
+                        ]),
+                    )
+                    .order_by(ProjectChunkModel.relative_path, ProjectChunkModel.start_line)
+                    .limit(limit - len(direct))
+                ))
+                direct.extend(nested)
+            return [ProjectChunk(
+                row.id, row.project_id, row.project_file_id, row.relative_path,
+                row.content, row.start_line, row.end_line, row.vector_id,
+            ) for row in direct]
+
     def save_artifact(
         self,
         *,

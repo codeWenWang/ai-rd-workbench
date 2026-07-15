@@ -1,4 +1,4 @@
-from app.domain.entities import ProjectChunk, ResourceType, ScoredChunk
+from app.domain.entities import Project, ProjectChunk, ResourceType, ScoredChunk
 from app.infrastructure.retrieval.project import ProjectIndexer, ProjectRetriever
 
 
@@ -12,6 +12,26 @@ class FakeAnalysis:
 
     def search_chunks(self, project_id, query, limit=6):
         return self.list_chunks(project_id)
+
+    def list_overview_chunks(self, project_id, limit=4):
+        return [ProjectChunk(
+            id="readme-chunk", project_id=project_id, project_file_id="readme-file",
+            relative_path="README.md", content="这是一个音乐网站项目。",
+            start_line=1, end_line=4, vector_id="readme-chunk",
+        )]
+
+
+class FakeProjects:
+    def get(self, project_id):
+        return Project(
+            id=project_id,
+            name="Music Website",
+            root_path="C:/cache/music-website",
+            source_type="gitee",
+            source_uri="https://gitee.com/example/music-website.git",
+            status="ready",
+            tech_stack=["html", "javascript", "css"],
+        )
 
 
 class FakeEmbeddings:
@@ -37,6 +57,11 @@ class FakeVectorIndex:
         )]
 
 
+class UnavailableEmbeddings:
+    async def embed_query(self, text):
+        raise RuntimeError("embedding service unavailable")
+
+
 async def test_project_indexer_uses_isolated_namespace_and_source_metadata() -> None:
     vector_index = FakeVectorIndex()
     indexer = ProjectIndexer(FakeAnalysis(), FakeEmbeddings(), vector_index)
@@ -51,10 +76,25 @@ async def test_project_indexer_uses_isolated_namespace_and_source_metadata() -> 
 
 
 async def test_project_retriever_fuses_local_and_semantic_results() -> None:
-    retriever = ProjectRetriever(FakeAnalysis(), FakeEmbeddings(), FakeVectorIndex())
+    retriever = ProjectRetriever(
+        FakeAnalysis(), FakeEmbeddings(), FakeVectorIndex(), projects=FakeProjects()
+    )
 
     result = await retriever.retrieve("project-1", "health")
 
     assert result.documents[0].resource_type is ResourceType.PROJECT
-    assert result.documents[0].metadata["relative_path"] == "app/main.py"
+    assert "Music Website" in result.documents[0].content
     assert result.warnings == []
+
+
+async def test_project_retriever_keeps_project_overview_when_semantic_search_is_unavailable() -> None:
+    retriever = ProjectRetriever(
+        FakeAnalysis(), UnavailableEmbeddings(), FakeVectorIndex(), projects=FakeProjects()
+    )
+
+    result = await retriever.retrieve("project-1", "简单介绍一下这个项目的主要技术栈")
+
+    assert "Music Website" in result.documents[0].content
+    assert "html、javascript、css" in result.documents[0].content
+    assert any(item.title == "README.md" for item in result.documents)
+    assert result.warnings == ["project_semantic_retrieval_unavailable"]

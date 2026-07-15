@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from datetime import datetime, timezone
 from enum import Enum
 
 
@@ -10,6 +11,10 @@ def serialize(value):
 def _value(value):
     if isinstance(value, Enum):
         return value.value
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.isoformat()
     if hasattr(value, "isoformat"):
         return value.isoformat()
     if isinstance(value, list):

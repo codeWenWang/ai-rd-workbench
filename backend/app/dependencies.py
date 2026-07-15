@@ -85,6 +85,7 @@ class AppContainer:
     def project_retriever(self):
         return ProjectRetriever(
             self.project_analysis, self.embeddings, self.vector_index,
+            projects=self.projects,
             limit=self.settings.rag_top_k,
         )
 
