@@ -31,6 +31,7 @@ class ProjectModel(Base):
     name: Mapped[str] = mapped_column(String(300), index=True)
     root_path: Mapped[str] = mapped_column(String(1000), unique=True)
     source_type: Mapped[str] = mapped_column(String(30), default="local")
+    source_uri: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
     source_revision: Mapped[str | None] = mapped_column(String(64), nullable=True)
     tech_stack_json: Mapped[str] = mapped_column(Text, default="[]")

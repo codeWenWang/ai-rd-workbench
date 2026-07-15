@@ -31,17 +31,19 @@ function renderSelector() {
 
 function renderOverview() {
   const project = activeProject();
+  const sourceLabel = { github: 'GitHub', gitee: 'Gitee' }[project?.source_type] || '本地目录';
+  const sourceLocation = project?.source_uri || project?.root_path;
   el('scan-project').disabled = !project;
   el('remove-project').disabled = !project;
   el('overview-subtitle').textContent = project
-    ? `${project.root_path} · ${project.status === 'ready' ? '已扫描' : '等待扫描'}`
-    : '连接本地项目后开始只读分析';
+    ? `${sourceLabel} · ${sourceLocation} · ${project.status === 'ready' ? '已扫描' : '等待扫描'}`
+    : '连接本地目录或公开 Git 仓库后开始只读分析';
   const stats = project ? [
     ['状态', project.status === 'ready' ? '已就绪' : '等待扫描'],
     ['技术栈', (project.tech_stack || []).join('、') || '待识别'],
     ['文件', state.files.length],
     ['最近扫描', ui.formatTime(project.last_scanned_at)],
-  ] : [['当前项目', '未连接'], ['源码权限', '严格只读'], ['项目数量', state.projects.length], ['GitHub', '后续扩展']];
+  ] : [['当前项目', '未连接'], ['源码权限', '严格只读'], ['项目数量', state.projects.length], ['远程仓库', 'GitHub / Gitee']];
   el('project-stats').innerHTML = stats.map(([label, value]) => `<div class="stat"><span>${ui.escape(label)}</span><strong>${ui.escape(String(value))}</strong></div>`).join('');
   el('project-files').innerHTML = state.files.length
     ? state.files.map(file => `<article class="list-item compact"><div><strong>${ui.escape(file.relative_path)}</strong><p>${ui.escape(file.language)} · ${file.size_bytes} B</p></div><span class="status-pill indexed">已解析</span></article>`).join('')
@@ -69,14 +71,22 @@ async function loadProjects({ emit = true } = {}) {
 
 async function addProject() {
   const result = await ui.formDialog({
-    title: '连接本地项目', submitText: '连接', fields: [
-      { name: 'name', label: '项目名称', placeholder: '默认使用文件夹名称' },
-      { name: 'root_path', label: '项目绝对路径', placeholder: '例如 E:\\projects\\demo', required: true },
+    title: '连接项目', submitText: '连接', fields: [
+      { name: 'source_type', label: '项目来源', type: 'select', value: 'local', options: [
+        ['local', '本地目录'], ['github', 'GitHub'], ['gitee', 'Gitee'],
+      ] },
+      { name: 'name', label: '项目名称', placeholder: '留空时使用目录或仓库名称' },
+      { name: 'root_path', label: '项目绝对路径', placeholder: '例如 E:\\projects\\demo', requiredWhen: { source_type: 'local' } },
+      { name: 'github_url', label: 'GitHub 仓库地址', placeholder: 'https://github.com/owner/repository', requiredWhen: { source_type: 'github' } },
+      { name: 'gitee_url', label: 'Gitee 仓库地址', placeholder: 'https://gitee.com/owner/repository', requiredWhen: { source_type: 'gitee' } },
     ],
   });
   if (!result) return;
   try {
-    const project = await api.createProject(result);
+    const payload = { name: result.name, source_type: result.source_type };
+    if (result.source_type === 'local') payload.root_path = result.root_path;
+    else payload.repository_url = result.github_url || result.gitee_url;
+    const project = await api.createProject(payload);
     state.activeId = project.id;
     localStorage.setItem('active_project_id', state.activeId);
     await loadProjects();
@@ -94,7 +104,11 @@ async function scanProject() {
     const summary = await api.scanProject(state.activeId);
     await loadProjects({ emit: false });
     ui.emit('project:scanned', { projectId: state.activeId, summary });
-    const warning = summary.warnings?.length ? '，语义索引暂时不可用，仍可使用本地检索' : '';
+    const warnings = summary.warnings || [];
+    const messages = [];
+    if (warnings.includes('remote_update_unavailable')) messages.push('远程更新失败，已使用本地缓存');
+    if (warnings.includes('project_semantic_index_unavailable')) messages.push('语义索引暂时不可用');
+    const warning = messages.length ? `，${messages.join('；')}` : '';
     ui.alert('project-alert', `扫描完成：${summary.file_count} 个文件，${summary.route_count} 个接口${warning}`, 'success');
   } catch (error) {
     ui.alert('project-alert', errorText(error));

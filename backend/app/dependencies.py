@@ -27,6 +27,7 @@ from app.infrastructure.llm.dashscope import DashScopeChatModel, DashScopeEmbedd
 from app.infrastructure.llm.gateway import ModelGateway
 from app.infrastructure.projects.parsers import ParserRegistry
 from app.infrastructure.projects.scanner import LocalProjectScanner
+from app.infrastructure.projects.remote_git import RemoteGitRepositoryManager
 from app.infrastructure.retrieval.fts import SqliteFtsSearch
 from app.infrastructure.retrieval.hybrid import HybridRetriever
 from app.infrastructure.retrieval.project import ProjectIndexer, ProjectRetriever
@@ -48,6 +49,11 @@ class AppContainer:
         self.project_analysis = SqliteProjectAnalysisRepository(self.database.session_factory)
         self.model_providers = SqliteModelProviderRepository(self.database.session_factory)
         self.secret_store = LocalSecretStore(_data_dir(self.settings.database_url))
+        self.remote_git = RemoteGitRepositoryManager(
+            self.settings.git_cache_dir,
+            clone_timeout_seconds=self.settings.git_clone_timeout_seconds,
+            update_timeout_seconds=self.settings.git_update_timeout_seconds,
+        )
         self.model_provider_use_case = ModelProviderUseCase(
             self.model_providers, self.secret_store
         )
@@ -88,7 +94,7 @@ class AppContainer:
 
     @cached_property
     def project_use_case(self):
-        return ProjectUseCase(self.projects)
+        return ProjectUseCase(self.projects, self.remote_git)
 
     @cached_property
     def project_analysis_use_case(self):

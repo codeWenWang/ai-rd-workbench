@@ -1,4 +1,5 @@
 import asyncio
+from typing import Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -14,12 +15,19 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 class ProjectCreate(BaseModel):
     name: str = Field(default="", max_length=300)
-    root_path: str = Field(min_length=1, max_length=1000)
+    source_type: Literal["local", "github", "gitee"] = "local"
+    root_path: str = Field(default="", max_length=1000)
+    repository_url: str = Field(default="", max_length=1000)
 
 
 @router.post("")
 def create_project(payload: ProjectCreate, container: AppContainer = Depends(get_container)):
-    return serialize(container.project_use_case.create(payload.name, payload.root_path))
+    return serialize(container.project_use_case.create(
+        payload.name,
+        payload.root_path,
+        source_type=payload.source_type,
+        repository_url=payload.repository_url,
+    ))
 
 
 @router.get("")
@@ -48,20 +56,27 @@ async def delete_project(project_id: str, container: AppContainer = Depends(get_
             )
         except Exception:
             warnings.append("project_vector_delete_unavailable")
-    container.project_use_case.delete(project_id)
+    await asyncio.to_thread(container.project_use_case.delete, project_id)
     return {"success": True, "warnings": warnings}
 
 
 @router.post("/{project_id}/scan")
 async def scan_project(project_id: str, container: AppContainer = Depends(get_container)):
+    warnings = await asyncio.to_thread(
+        container.project_use_case.prepare_for_scan,
+        project_id,
+    )
     summary = await asyncio.to_thread(container.project_analysis_use_case.scan, project_id)
-    warnings = []
     indexed_chunks = 0
     try:
         indexed_chunks = await container.project_indexer.index(project_id)
     except Exception:
         warnings.append("project_semantic_index_unavailable")
-    return {**serialize(summary), "indexed_chunks": indexed_chunks, "warnings": warnings}
+    return {
+        **serialize(summary),
+        "indexed_chunks": indexed_chunks,
+        "warnings": list(dict.fromkeys(warnings)),
+    }
 
 
 @router.get("/{project_id}/files")

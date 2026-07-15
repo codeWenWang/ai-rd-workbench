@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 
 from fastapi.testclient import TestClient
 
@@ -6,6 +7,10 @@ from app.config import Settings
 from app.dependencies import AppContainer
 from app.main import create_app
 from app.infrastructure.llm.gateway import ModelGateway
+from app.infrastructure.projects.remote_git import (
+    RemoteRepository,
+    normalize_repository_url,
+)
 
 
 class FakeEmbeddings:
@@ -49,16 +54,88 @@ class FixedModel:
         yield self.answer
 
 
-def make_client(tmp_path: Path) -> TestClient:
+class FakeRemoteGit:
+    def __init__(self, cache_root: Path, warnings=None):
+        self.cache_root = cache_root
+        self.warnings = list(warnings or [])
+
+    def clone(self, url: str, *, expected_source: str | None = None):
+        remote = normalize_repository_url(url, expected_source)
+        target = self.cache_root / f"{remote.source_type}-{remote.name}"
+        target.mkdir(parents=True, exist_ok=True)
+        (target / ".git").mkdir(exist_ok=True)
+        (target / "main.py").write_text(
+            "from fastapi import FastAPI\napp=FastAPI()\n@app.get('/remote')\ndef remote(): return {}\n",
+            encoding="utf-8",
+        )
+        return RemoteRepository(
+            source_type=remote.source_type,
+            url=remote.url,
+            owner=remote.owner,
+            name=remote.name,
+            cache_path=target.resolve(),
+        )
+
+    def update(self, cache_path):
+        return list(self.warnings)
+
+    def remove(self, cache_path):
+        shutil.rmtree(cache_path)
+
+
+def make_client(tmp_path: Path, *, remote_warnings=None) -> TestClient:
     settings = Settings(
         database_url=f"sqlite:///{(tmp_path / 'api.db').as_posix()}",
         dashscope_api_key="test-dashscope-key",
         pinecone_api_key="test-pinecone-key",
+        git_cache_dir=str(tmp_path / "git-cache"),
     )
     container = AppContainer(settings)
+    container.remote_git = FakeRemoteGit(
+        tmp_path / "git-cache",
+        warnings=remote_warnings,
+    )
     container.embeddings = FakeEmbeddings()
     container.vector_index = FakeVectorIndex()
     return TestClient(create_app(container=container))
+
+
+def test_project_api_accepts_public_github_and_gitee_repositories(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+
+    github = client.post("/api/projects", json={
+        "name": "GitHub demo",
+        "source_type": "github",
+        "repository_url": "https://github.com/example/demo",
+    })
+    gitee = client.post("/api/projects", json={
+        "name": "Gitee demo",
+        "source_type": "gitee",
+        "repository_url": "https://gitee.com/example/demo-cn.git",
+    })
+
+    assert github.status_code == 200
+    assert github.json()["source_type"] == "github"
+    assert github.json()["source_uri"] == "https://github.com/example/demo.git"
+    assert Path(github.json()["root_path"]).is_dir()
+    assert gitee.status_code == 200
+    assert gitee.json()["source_type"] == "gitee"
+    assert gitee.json()["source_uri"] == "https://gitee.com/example/demo-cn.git"
+
+
+def test_remote_project_scan_uses_cache_when_update_is_unavailable(tmp_path: Path) -> None:
+    client = make_client(tmp_path, remote_warnings=["remote_update_unavailable"])
+    project = client.post("/api/projects", json={
+        "source_type": "gitee",
+        "repository_url": "https://gitee.com/example/demo",
+    }).json()
+
+    scanned = client.post(f"/api/projects/{project['id']}/scan")
+
+    assert scanned.status_code == 200
+    assert scanned.json()["file_count"] == 1
+    assert scanned.json()["route_count"] == 1
+    assert "remote_update_unavailable" in scanned.json()["warnings"]
 
 
 def test_project_scan_artifacts_and_conversation_filter_flow(tmp_path: Path) -> None:

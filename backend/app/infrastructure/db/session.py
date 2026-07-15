@@ -31,6 +31,14 @@ class Database:
                 connection.exec_driver_sql(
                     "ALTER TABLE conversations ADD COLUMN project_id VARCHAR(36)"
                 )
+            project_columns = {
+                row[1]
+                for row in connection.exec_driver_sql("PRAGMA table_info(projects)")
+            }
+            if "source_uri" not in project_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE projects ADD COLUMN source_uri VARCHAR(1000)"
+                )
             message_columns = {
                 row[1]
                 for row in connection.exec_driver_sql("PRAGMA table_info(messages)")

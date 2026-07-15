@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     rag_chunk_overlap: int = Field(default=50, ge=0, le=1000)
     upload_max_bytes: int = Field(default=20 * 1024 * 1024, ge=1024)
     pdf_max_pages: int = Field(default=300, ge=1)
+    git_cache_dir: str = str(BACKEND_DIR / "data" / "git-projects")
+    git_clone_timeout_seconds: int = Field(default=180, ge=10, le=1800)
+    git_update_timeout_seconds: int = Field(default=90, ge=5, le=600)
 
 
 @lru_cache

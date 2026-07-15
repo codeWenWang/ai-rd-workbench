@@ -53,6 +53,22 @@ test('project analysis navigation defaults closed and toggles locally', async ()
 });
 
 
+test('project connection supports local GitHub and Gitee sources', async () => {
+  const projectsSource = await readFile(new URL('./js/projects.js', import.meta.url), 'utf8');
+
+  assert.match(projectsSource, /name: 'source_type'/);
+  assert.match(projectsSource, /\['github', 'GitHub'/);
+  assert.match(projectsSource, /\['gitee', 'Gitee'/);
+  assert.match(projectsSource, /requiredWhen: \{ source_type: 'local' \}/);
+  assert.match(projectsSource, /requiredWhen: \{ source_type: 'github' \}/);
+  assert.match(projectsSource, /requiredWhen: \{ source_type: 'gitee' \}/);
+  assert.match(projectsSource, /repository_url/);
+  assert.match(projectsSource, /source_uri/);
+  assert.match(projectsSource, /GitHub/);
+  assert.match(projectsSource, /Gitee/);
+});
+
+
 test('memory candidates only expose pending suggestions', async () => {
   const module = await import(`./js/memories.js?test=${Date.now()}`);
 

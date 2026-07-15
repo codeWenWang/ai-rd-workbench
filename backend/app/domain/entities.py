@@ -138,6 +138,7 @@ class Project:
     name: str
     root_path: str
     source_type: str = "local"
+    source_uri: str | None = None
     status: str = "pending"
     source_revision: str | None = None
     tech_stack: list[str] = field(default_factory=list)

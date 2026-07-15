@@ -151,7 +151,14 @@ class SqliteModelProviderRepository(RepositoryBase):
 
 
 class SqliteProjectRepository(RepositoryBase):
-    def create(self, *, name: str, root_path: str, source_type: str = "local") -> Project:
+    def create(
+        self,
+        *,
+        name: str,
+        root_path: str,
+        source_type: str = "local",
+        source_uri: str | None = None,
+    ) -> Project:
         normalized = str(Path(root_path).expanduser().resolve())
         with self.sessions.begin() as session:
             row = ProjectModel(
@@ -159,6 +166,7 @@ class SqliteProjectRepository(RepositoryBase):
                 name=name.strip() or Path(normalized).name,
                 root_path=normalized,
                 source_type=source_type,
+                source_uri=source_uri,
             )
             session.add(row)
         return self._entity(row)
@@ -206,6 +214,7 @@ class SqliteProjectRepository(RepositoryBase):
             name=row.name,
             root_path=row.root_path,
             source_type=row.source_type,
+            source_uri=row.source_uri,
             status=row.status,
             source_revision=row.source_revision,
             tech_stack=json.loads(row.tech_stack_json or "[]"),
