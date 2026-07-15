@@ -33,6 +33,10 @@ LANGUAGES = {
     ".sql": "sql",
     ".gradle": "gradle",
 }
+SENSITIVE_KEY_MARKERS = (
+    "password", "passwd", "secret", "token", "api-key", "api_key", "apikey",
+    "access-key", "access_key", "private-key", "private_key", "credential",
+)
 
 
 @dataclass(slots=True)
@@ -88,13 +92,16 @@ class LocalProjectScanner:
                 skipped.append(relative.as_posix())
                 continue
             content_hash = sha256(raw).hexdigest()
+            content = raw.decode("utf-8", errors="replace")
+            if language in {"properties", "yaml", "toml"}:
+                content = _redact_sensitive_assignments(content)
             files.append(ScannedFile(
                 relative_path=relative.as_posix(),
                 language=language,
                 size_bytes=stat.st_size,
                 modified_ns=stat.st_mtime_ns,
                 content_hash=content_hash,
-                content=raw.decode("utf-8", errors="replace"),
+                content=content,
             ))
         revision_input = "\n".join(
             f"{item.relative_path}:{item.content_hash}" for item in files
@@ -105,3 +112,24 @@ class LocalProjectScanner:
             files=files,
             skipped=skipped,
         )
+
+
+def _redact_sensitive_assignments(content: str) -> str:
+    redacted = []
+    for line in content.splitlines(keepends=True):
+        stripped = line.lstrip()
+        if not stripped or stripped.startswith(("#", ";")):
+            redacted.append(line)
+            continue
+        positions = [position for delimiter in ("=", ":") if (position := line.find(delimiter)) >= 0]
+        if not positions:
+            redacted.append(line)
+            continue
+        position = min(positions)
+        key = line[:position].strip().casefold()
+        if not any(marker in key for marker in SENSITIVE_KEY_MARKERS):
+            redacted.append(line)
+            continue
+        ending = "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else ""
+        redacted.append(f"{line[:position + 1]}[REDACTED]{ending}")
+    return "".join(redacted)

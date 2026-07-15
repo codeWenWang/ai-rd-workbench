@@ -46,3 +46,18 @@ def test_scanner_collects_java_maven_and_runtime_configuration(tmp_path: Path) -
     assert {item.language for item in result.files} == {
         "java", "properties", "gradle", "xml", "sql",
     }
+
+
+def test_scanner_redacts_sensitive_property_values(tmp_path: Path) -> None:
+    (tmp_path / "application.properties").write_text(
+        "database.password=hunter2\napi-token: secret-token\nserver.port=8080\n",
+        encoding="utf-8",
+    )
+
+    result = LocalProjectScanner().scan(tmp_path)
+
+    content = result.files[0].content
+    assert "hunter2" not in content
+    assert "secret-token" not in content
+    assert content.count("[REDACTED]") == 2
+    assert "server.port=8080" in content
