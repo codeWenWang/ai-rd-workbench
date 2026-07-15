@@ -3,7 +3,7 @@ import { initDocuments } from './documents.js?v=20260714.1';
 import { initMemories } from './memories.js?v=20260714.1';
 import { initDiagnostics } from './diagnostics.js?v=20260714.1';
 import { initProjects } from './projects.js?v=20260715.2';
-import { initArtifacts } from './artifacts.js?v=20260715.3';
+import { initArtifacts } from './artifacts.js?v=20260716.1';
 import { initModels } from './models.js?v=20260714.3';
 
 const eventBus = new EventTarget();
@@ -234,6 +234,7 @@ function setTheme(theme) {
   const next = theme === 'dark' ? '浅色模式' : '深色模式';
   el('theme-label').textContent = next;
   el('theme-toggle').title = `切换到${next}`;
+  ui.emit('theme:changed', theme);
 }
 
 function setSidebarCollapsed(collapsed) {

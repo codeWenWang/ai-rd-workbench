@@ -4,6 +4,49 @@ import { activeProjectId } from './projects.js?v=20260715.2';
 let ui;
 const latest = new Map();
 
+export function mermaidThemeConfig(theme) {
+  if (theme !== 'dark') return { startOnLoad: false, theme: 'default' };
+  return {
+    startOnLoad: false,
+    theme: 'base',
+    themeVariables: {
+      darkMode: true,
+      background: '#2f2f2f',
+      primaryColor: '#3a3a3a',
+      primaryTextColor: '#f4f4f5',
+      primaryBorderColor: '#a1a1aa',
+      secondaryColor: '#183d34',
+      secondaryTextColor: '#ecfdf5',
+      secondaryBorderColor: '#54c58b',
+      tertiaryColor: '#463817',
+      tertiaryTextColor: '#fff7cc',
+      tertiaryBorderColor: '#e5b94f',
+      lineColor: '#d4d4d8',
+      textColor: '#f4f4f5',
+      mainBkg: '#3a3a3a',
+      nodeBorder: '#a1a1aa',
+      clusterBkg: '#262626',
+      clusterBorder: '#71717a',
+      edgeLabelBackground: '#2f2f2f',
+      actorBkg: '#3a3a3a',
+      actorBorder: '#a1a1aa',
+      actorTextColor: '#f4f4f5',
+      actorLineColor: '#a1a1aa',
+      signalColor: '#e4e4e7',
+      signalTextColor: '#f4f4f5',
+      labelBoxBkgColor: '#2f2f2f',
+      labelBoxBorderColor: '#71717a',
+      labelTextColor: '#f4f4f5',
+      loopTextColor: '#f4f4f5',
+      noteBkgColor: '#4a431f',
+      noteBorderColor: '#e5b94f',
+      noteTextColor: '#fff7cc',
+      activationBkgColor: '#183d34',
+      activationBorderColor: '#54c58b',
+    },
+  };
+}
+
 function contentNode(view, artifact) {
   const container = view.querySelector('.artifact-content');
   container.className = 'artifact-content';
@@ -23,7 +66,7 @@ function contentNode(view, artifact) {
     diagram.textContent = artifact.content;
     container.append(diagram);
     if (globalThis.mermaid) {
-      globalThis.mermaid.initialize({ startOnLoad: false, theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'default' });
+      globalThis.mermaid.initialize(mermaidThemeConfig(document.documentElement.dataset.theme));
       globalThis.mermaid.run({ nodes: [diagram] }).catch(() => { diagram.classList.add('artifact-code'); });
     } else diagram.classList.add('artifact-code');
   } else {
@@ -77,5 +120,6 @@ export async function initArtifacts(sharedUi) {
   });
   ui.on('project:changed', loadArtifacts);
   ui.on('project:scanned', loadArtifacts);
+  ui.on('theme:changed', renderAll);
   await loadArtifacts();
 }

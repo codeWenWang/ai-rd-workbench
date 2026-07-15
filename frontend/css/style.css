@@ -400,6 +400,15 @@ dialog footer { padding: 13px 18px; border-top: 1px solid var(--line); display: 
 .artifact-content { margin-top: 20px; min-height: 420px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 20px; overflow: auto; }
 .artifact-meta { margin-bottom: 14px; color: var(--muted); font-size: 12px; }
 .artifact-diagram { display: flex; justify-content: center; min-width: 720px; background: transparent; }
+html[data-theme="dark"] .artifact-diagram svg marker path { fill: #e4e4e7 !important; stroke: #e4e4e7 !important; }
+html[data-theme="dark"] .artifact-diagram svg .flowchart-link,
+html[data-theme="dark"] .artifact-diagram svg .edgePath path,
+html[data-theme="dark"] .artifact-diagram svg .messageLine0,
+html[data-theme="dark"] .artifact-diagram svg .messageLine1 { stroke: #d4d4d8 !important; }
+html[data-theme="dark"] .artifact-diagram svg .messageText,
+html[data-theme="dark"] .artifact-diagram svg .labelText,
+html[data-theme="dark"] .artifact-diagram svg .loopText,
+html[data-theme="dark"] .artifact-diagram svg .edgeLabel { fill: #f4f4f5 !important; color: #f4f4f5 !important; }
 .artifact-code, .artifact-markdown { margin: 0; font: 13px/1.65 "Cascadia Code", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
 .artifact-markdown { min-width: 0; }
 .artifact-view .artifact-alert:empty { display: none; }

@@ -74,6 +74,27 @@ test('mobile architecture keeps a readable canvas inside its scroll container', 
 });
 
 
+test('dark Mermaid diagrams use high-contrast connectors and rerender on theme changes', async () => {
+  globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
+  const artifacts = await import(`./js/artifacts.js?test=${Date.now()}`);
+  const appSource = await readFile(new URL('./js/app.js', import.meta.url), 'utf8');
+  const artifactsSource = await readFile(new URL('./js/artifacts.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.equal(typeof artifacts.mermaidThemeConfig, 'function');
+  const config = artifacts.mermaidThemeConfig('dark');
+  assert.equal(config.theme, 'base');
+  assert.match(config.themeVariables.lineColor, /^#[0-9a-f]{6}$/i);
+  assert.match(config.themeVariables.signalColor, /^#[0-9a-f]{6}$/i);
+  assert.match(config.themeVariables.signalTextColor, /^#[0-9a-f]{6}$/i);
+  assert.notEqual(config.themeVariables.lineColor, config.themeVariables.background);
+  assert.match(appSource, /ui\.emit\('theme:changed', theme\)/);
+  assert.match(artifactsSource, /ui\.on\('theme:changed', renderAll\)/);
+  assert.match(css, /html\[data-theme="dark"\] \.artifact-diagram svg marker path/);
+  assert.match(css, /html\[data-theme="dark"\] \.artifact-diagram svg \.messageText/);
+});
+
+
 test('project connection supports local GitHub and Gitee sources', async () => {
   const projectsSource = await readFile(new URL('./js/projects.js', import.meta.url), 'utf8');
   const apiSource = await readFile(new URL('./js/api.js', import.meta.url), 'utf8');
