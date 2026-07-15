@@ -9,6 +9,8 @@ from app.infrastructure.db.repositories import (
     SqliteProjectRepository,
 )
 from app.infrastructure.db.session import Database
+from app.infrastructure.artifacts.mermaid import render_architecture
+from app.infrastructure.projects.insights import ProjectInsight, ProjectModuleInsight
 from app.infrastructure.projects.parsers import ParserRegistry
 from app.infrastructure.projects.scanner import LocalProjectScanner
 
@@ -158,6 +160,30 @@ def test_java_maven_artifacts_are_module_oriented_and_framework_neutral(tmp_path
     assert "Spring MVC" in api_docs
     assert "server/src/main/java/demo/RepositoryController.java" in api_docs
     assert "FastAPI" not in architecture + flow + sequence + api_docs
+
+
+def test_large_architecture_groups_modules_by_role() -> None:
+    protocols = [
+        ProjectModuleInsight(f"protocol-{index}", "协议适配", 3)
+        for index in range(10)
+    ]
+    modules = [
+        ProjectModuleInsight(
+            "server", "入口服务", 20,
+            dependencies=["core", "storage-file", *[item.name for item in protocols]],
+        ),
+        ProjectModuleInsight("core", "核心", 30),
+        ProjectModuleInsight("storage-file", "存储", 8),
+        *protocols,
+    ]
+
+    diagram = render_architecture(ProjectInsight("Java / Maven / Spring", modules=modules))
+
+    assert 'group_entry["入口服务 · 1 个模块' in diagram
+    assert 'group_protocol["协议适配 · 10 个模块' in diagram
+    assert "protocol-*" in diagram
+    assert "group_entry --> group_protocol" in diagram
+    assert diagram.count("protocol-") < 10
 
 
 def test_large_source_file_is_split_into_embedding_sized_chunks(tmp_path: Path) -> None:

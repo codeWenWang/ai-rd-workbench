@@ -3,7 +3,7 @@ import { initDocuments } from './documents.js?v=20260714.1';
 import { initMemories } from './memories.js?v=20260714.1';
 import { initDiagnostics } from './diagnostics.js?v=20260714.1';
 import { initProjects } from './projects.js?v=20260715.2';
-import { initArtifacts } from './artifacts.js?v=20260715.2';
+import { initArtifacts } from './artifacts.js?v=20260715.3';
 import { initModels } from './models.js?v=20260714.3';
 
 const eventBus = new EventTarget();

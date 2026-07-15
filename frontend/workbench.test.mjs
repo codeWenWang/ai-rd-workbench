@@ -64,6 +64,16 @@ test('project analysis descriptions are module-oriented and framework-neutral', 
 });
 
 
+test('mobile architecture keeps a readable canvas inside its scroll container', async () => {
+  const artifactsSource = await readFile(new URL('./js/artifacts.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.match(artifactsSource, /artifact-\$\{view\.dataset\.artifactType\}/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.artifact-diagram\.artifact-architecture[\s\S]*min-width:\s*520px/);
+  assert.match(css, /\.artifact-diagram\.artifact-architecture svg[\s\S]*max-width:\s*100%/);
+});
+
+
 test('project connection supports local GitHub and Gitee sources', async () => {
   const projectsSource = await readFile(new URL('./js/projects.js', import.meta.url), 'utf8');
   const apiSource = await readFile(new URL('./js/api.js', import.meta.url), 'utf8');

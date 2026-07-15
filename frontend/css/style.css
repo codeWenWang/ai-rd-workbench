@@ -419,6 +419,8 @@ dialog footer { padding: 13px 18px; border-top: 1px solid var(--line); display: 
   .model-manager-toolbar .button { width: 100%; }
   .model-provider-actions .button { flex: 1; }
   .artifact-content { margin-left: -4px; margin-right: -4px; padding: 12px; }
+  .artifact-diagram.artifact-architecture { min-width: 520px; width: 100%; }
+  .artifact-diagram.artifact-architecture svg { max-width: 100% !important; height: auto; }
   .app-shell.sidebar-collapsed .analysis-menu { display: grid; }
   .app-shell.sidebar-collapsed .analysis-chevron { display: inline-grid; }
 }

@@ -19,7 +19,7 @@ function contentNode(view, artifact) {
   container.append(meta);
   if (artifact.format === 'mermaid') {
     const diagram = document.createElement('pre');
-    diagram.className = 'mermaid artifact-diagram';
+    diagram.className = `mermaid artifact-diagram artifact-${view.dataset.artifactType}`;
     diagram.textContent = artifact.content;
     container.append(diagram);
     if (globalThis.mermaid) {

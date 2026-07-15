@@ -1,7 +1,10 @@
 import re
+from os.path import commonprefix
 
 
 def render_architecture(insight) -> str:
+    if len(insight.modules) > 12:
+        return _render_grouped_architecture(insight.modules)
     lines = ["flowchart LR"]
     if not insight.modules:
         lines.append('    project["当前静态分析未识别到可聚合模块"]')
@@ -18,6 +21,47 @@ def render_architecture(insight) -> str:
             if dependency in module_names:
                 lines.append(f"    {_node_id(module.name)} --> {_node_id(dependency)}")
     return "\n".join(lines)
+
+
+def _render_grouped_architecture(modules) -> str:
+    role_ids = {
+        "入口服务": "group_entry", "界面": "group_ui", "核心": "group_core",
+        "协议适配": "group_protocol", "持久化": "group_persistence",
+        "存储": "group_storage", "迁移": "group_migration",
+        "测试": "group_test", "功能模块": "group_feature",
+    }
+    groups = {}
+    module_roles = {module.name: module.role for module in modules}
+    for module in modules:
+        groups.setdefault(module.role, []).append(module)
+    lines = ["flowchart TB"]
+    for role, grouped in sorted(groups.items(), key=lambda item: (_role_priority(item[0]), item[0])):
+        node_id = role_ids.get(role, f"group_{_node_id(role)}")
+        names = [item.name for item in sorted(grouped, key=lambda item: item.name)]
+        shown, remainder = _group_summary(names)
+        lines.append(
+            f'    {node_id}["{_label(role)} · {len(names)} 个模块<br/>{_label(shown)}{remainder}"]'
+        )
+    edges = set()
+    for module in modules:
+        for dependency in module.dependencies:
+            target_role = module_roles.get(dependency)
+            if target_role and target_role != module.role:
+                edges.add((module.role, target_role))
+    for source_role, target_role in sorted(edges, key=lambda item: (_role_priority(item[0]), _role_priority(item[1]), item)):
+        source_id = role_ids.get(source_role, f"group_{_node_id(source_role)}")
+        target_id = role_ids.get(target_role, f"group_{_node_id(target_role)}")
+        lines.append(f"    {source_id} --> {target_id}")
+    return "\n".join(lines)
+
+
+def _group_summary(names: list[str]) -> tuple[str, str]:
+    if len(names) > 4:
+        prefix = commonprefix(names)
+        if len(prefix) >= 4 and prefix[-1:] in {"-", "_"}:
+            return f"{prefix}*", ""
+        return " / ".join(names[:3]), f"<br/>另有 {len(names) - 3} 个模块"
+    return " / ".join(names), ""
 
 
 def render_flow(insight) -> str:
@@ -133,11 +177,14 @@ def _relevant_dependencies(endpoint, modules: dict) -> list[str]:
 
 
 def _ordered_modules(modules):
-    priority = {
+    return sorted(modules, key=lambda item: (_role_priority(item.role), item.name))
+
+
+def _role_priority(role: str) -> int:
+    return {
         "入口服务": 0, "界面": 1, "协议适配": 2, "核心": 3,
         "持久化": 4, "存储": 5, "迁移": 6, "功能模块": 7, "测试": 8,
-    }
-    return sorted(modules, key=lambda item: (priority.get(item.role, 9), item.name))
+    }.get(role, 9)
 
 
 def _node_id(value: str) -> str:
