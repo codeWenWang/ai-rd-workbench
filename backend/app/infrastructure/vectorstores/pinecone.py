@@ -34,7 +34,9 @@ class PineconeVectorIndex:
             for item in chunks
         ]
         try:
-            await asyncio.to_thread(self._get_index().upsert, vectors=vectors, namespace=namespace)
+            await asyncio.to_thread(
+                lambda: self._get_index().upsert(vectors=vectors, namespace=namespace)
+            )
         except ExternalServiceError:
             raise
         except Exception as exc:
@@ -44,14 +46,21 @@ class PineconeVectorIndex:
         if not vector_ids:
             return
         try:
-            await asyncio.to_thread(self._get_index().delete, ids=vector_ids, namespace=namespace)
+            await asyncio.to_thread(
+                lambda: self._get_index().delete(ids=vector_ids, namespace=namespace)
+            )
         except Exception as exc:
             raise ExternalServiceError("vector delete failed") from exc
 
     async def query(self, namespace: str, vector: list[float], limit: int) -> list[ScoredChunk]:
         try:
             result = await asyncio.to_thread(
-                self._get_index().query, vector=vector, top_k=limit, namespace=namespace, include_metadata=True
+                lambda: self._get_index().query(
+                    vector=vector,
+                    top_k=limit,
+                    namespace=namespace,
+                    include_metadata=True,
+                )
             )
         except Exception as exc:
             raise ExternalServiceError("semantic retrieval unavailable") from exc
@@ -82,7 +91,9 @@ class PineconeVectorIndex:
 
     async def list_ids(self, namespace: str) -> AsyncIterator[str]:
         try:
-            pages = await asyncio.to_thread(lambda: list(self._get_index().list(namespace=namespace)))
+            pages = await asyncio.to_thread(
+                lambda: list(self._get_index().list(namespace=namespace))
+            )
             for page in pages:
                 ids = page.get("vectors", page) if isinstance(page, dict) else page
                 for item in ids:
@@ -94,7 +105,9 @@ class PineconeVectorIndex:
         if not vector_ids:
             return []
         try:
-            result = await asyncio.to_thread(self._get_index().fetch, ids=vector_ids, namespace=namespace)
+            result = await asyncio.to_thread(
+                lambda: self._get_index().fetch(ids=vector_ids, namespace=namespace)
+            )
         except Exception as exc:
             raise ExternalServiceError("vector fetch failed") from exc
         vectors = result.get("vectors", {}) if isinstance(result, dict) else result.vectors
@@ -103,7 +116,9 @@ class PineconeVectorIndex:
 
     async def health(self) -> ComponentHealth:
         try:
-            stats = await asyncio.to_thread(self._get_index().describe_index_stats)
+            stats = await asyncio.to_thread(
+                lambda: self._get_index().describe_index_stats()
+            )
             dimension = _field(stats, "dimension", None)
             return ComponentHealth("pinecone", True, details={"dimension": dimension})
         except Exception:

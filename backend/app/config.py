@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     pinecone_host: str = ""
     pinecone_rag_namespace: str = "rag"
     pinecone_memory_namespace: str = "ltm"
+    diagnostics_timeout_seconds: float = Field(default=3.0, ge=0.01, le=30)
     rag_top_k: int = Field(default=5, ge=1, le=20)
     rag_chunk_size: int = Field(default=500, ge=100, le=4000)
     rag_chunk_overlap: int = Field(default=50, ge=0, le=1000)
