@@ -27,6 +27,11 @@ LANGUAGES = {
     ".toml": "toml",
     ".yaml": "yaml",
     ".yml": "yaml",
+    ".java": "java",
+    ".xml": "xml",
+    ".properties": "properties",
+    ".sql": "sql",
+    ".gradle": "gradle",
 }
 
 
