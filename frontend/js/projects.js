@@ -1,4 +1,4 @@
-import { api, errorText, listFrom } from './api.js?v=20260714.1';
+import { api, errorText, listFrom } from './api.js?v=20260715.2';
 
 let ui;
 const el = id => document.getElementById(id);
@@ -82,6 +82,13 @@ async function addProject() {
     ],
   });
   if (!result) return;
+  ui.showView('overview');
+  const remote = result.source_type !== 'local';
+  ui.alert(
+    'project-alert',
+    remote ? '正在连接远程仓库并准备源码，请稍候…' : '正在连接本地项目…',
+    'progress',
+  );
   try {
     const payload = { name: result.name, source_type: result.source_type };
     if (result.source_type === 'local') payload.root_path = result.root_path;
@@ -90,7 +97,7 @@ async function addProject() {
     state.activeId = project.id;
     localStorage.setItem('active_project_id', state.activeId);
     await loadProjects();
-    ui.showView('overview');
+    ui.alert('project-alert', '项目连接成功，可以开始扫描。', 'success');
   } catch (error) {
     ui.alert('project-alert', errorText(error));
   }
@@ -100,6 +107,7 @@ async function scanProject() {
   if (!state.activeId) return;
   const button = el('scan-project');
   ui.busy(button, true);
+  ui.alert('project-alert', '正在扫描项目，请稍候…', 'progress');
   try {
     const summary = await api.scanProject(state.activeId);
     await loadProjects({ emit: false });
@@ -109,7 +117,8 @@ async function scanProject() {
     if (warnings.includes('remote_update_unavailable')) messages.push('远程更新失败，已使用本地缓存');
     if (warnings.includes('project_semantic_index_unavailable')) messages.push('语义索引暂时不可用');
     const warning = messages.length ? `，${messages.join('；')}` : '';
-    ui.alert('project-alert', `扫描完成：${summary.file_count} 个文件，${summary.route_count} 个接口${warning}`, 'success');
+    const completedAt = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    ui.alert('project-alert', `本次扫描完成（${completedAt}）：${summary.file_count} 个文件，${summary.route_count} 个接口${warning}`, 'success');
   } catch (error) {
     ui.alert('project-alert', errorText(error));
   } finally {

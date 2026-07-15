@@ -55,6 +55,7 @@ test('project analysis navigation defaults closed and toggles locally', async ()
 
 test('project connection supports local GitHub and Gitee sources', async () => {
   const projectsSource = await readFile(new URL('./js/projects.js', import.meta.url), 'utf8');
+  const apiSource = await readFile(new URL('./js/api.js', import.meta.url), 'utf8');
 
   assert.match(projectsSource, /name: 'source_type'/);
   assert.match(projectsSource, /\['github', 'GitHub'/);
@@ -66,6 +67,32 @@ test('project connection supports local GitHub and Gitee sources', async () => {
   assert.match(projectsSource, /source_uri/);
   assert.match(projectsSource, /GitHub/);
   assert.match(projectsSource, /Gitee/);
+  assert.match(apiSource, /createProject:[^\n]*timeout:\s*210000/);
+});
+
+
+test('project operation alerts replace stale messages and expose scan progress', async () => {
+  const appSource = await readFile(new URL('./js/app.js', import.meta.url), 'utf8');
+  const projectsSource = await readFile(new URL('./js/projects.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.match(appSource, /container\.replaceChildren\(box\)/);
+  assert.doesNotMatch(appSource, /container\.append\(box\)/);
+  assert.match(projectsSource, /正在扫描项目/);
+  assert.match(projectsSource, /本次扫描完成/);
+  assert.match(projectsSource, /toLocaleTimeString\('zh-CN'/);
+  assert.match(css, /\.inline-alert\.progress/);
+});
+
+
+test('project analysis and workspace share one project state module', async () => {
+  const appSource = await readFile(new URL('./js/app.js', import.meta.url), 'utf8');
+  const artifactsSource = await readFile(new URL('./js/artifacts.js', import.meta.url), 'utf8');
+  const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
+  const projectImport = source => source.match(/from ['"](\.\/projects\.js\?v=[^'"]+)['"]/)?.[1];
+
+  assert.equal(projectImport(artifactsSource), projectImport(appSource));
+  assert.equal(projectImport(chatSource), projectImport(appSource));
 });
 
 

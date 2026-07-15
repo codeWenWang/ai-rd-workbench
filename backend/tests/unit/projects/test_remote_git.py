@@ -105,6 +105,74 @@ def test_manager_clones_with_safe_arguments(tmp_path: Path) -> None:
     assert calls[0][2] == 17
 
 
+def test_manager_uses_source_only_partial_clone_for_github(tmp_path: Path) -> None:
+    calls = []
+
+    def runner(args, *, cwd, timeout):
+        calls.append((list(args), Path(cwd), timeout))
+        if "clone" in args:
+            target = Path(args[-1])
+            target.mkdir(parents=True)
+            (target / ".git").mkdir()
+        return CompletedProcess(args, 0, stdout="", stderr="")
+
+    manager = RemoteGitRepositoryManager(
+        tmp_path / "cache",
+        git_executable="git",
+        runner=runner,
+        clone_timeout_seconds=17,
+    )
+
+    remote = manager.clone(
+        "https://github.com/worstwoof/Music-Website",
+        expected_source="github",
+    )
+
+    assert remote.cache_path.is_dir()
+    assert calls[0][0][1:5] == [
+        "-c", "http.version=HTTP/1.1", "clone", "--depth",
+    ]
+    assert "--filter=blob:none" in calls[0][0]
+    assert "--no-checkout" in calls[0][0]
+    assert calls[1][0][:4] == ["git", "sparse-checkout", "set", "--no-cone"]
+    assert "*.py" in calls[1][0]
+    assert "*.js" in calls[1][0]
+    assert calls[2][0] == ["git", "checkout", "--force"]
+    assert all(call[2] == 17 for call in calls)
+
+
+def test_manager_retries_once_after_transient_clone_failure(tmp_path: Path) -> None:
+    clone_attempts = 0
+
+    def runner(args, *, cwd, timeout):
+        nonlocal clone_attempts
+        if "clone" in args:
+            clone_attempts += 1
+            target = Path(args[-1])
+            if clone_attempts == 1:
+                target.mkdir(parents=True)
+                (target / "partial.lock").write_text("incomplete", encoding="utf-8")
+                return CompletedProcess(args, 1, stdout="", stderr="proxy unavailable")
+            target.mkdir(parents=True)
+            (target / ".git").mkdir()
+        return CompletedProcess(args, 0, stdout="", stderr="")
+
+    manager = RemoteGitRepositoryManager(
+        tmp_path / "cache",
+        git_executable="git",
+        runner=runner,
+    )
+
+    remote = manager.clone(
+        "https://github.com/example/large-project",
+        expected_source="github",
+    )
+
+    assert clone_attempts == 2
+    assert remote.cache_path.is_dir()
+    assert not (remote.cache_path / "partial.lock").exists()
+
+
 def test_manager_update_falls_back_to_existing_cache(tmp_path: Path) -> None:
     cache = tmp_path / "cache" / "github-demo"
     (cache / ".git").mkdir(parents=True)

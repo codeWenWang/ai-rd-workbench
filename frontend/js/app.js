@@ -2,8 +2,8 @@ import { initChat } from './chat.js?v=20260715.1';
 import { initDocuments } from './documents.js?v=20260714.1';
 import { initMemories } from './memories.js?v=20260714.1';
 import { initDiagnostics } from './diagnostics.js?v=20260714.1';
-import { initProjects } from './projects.js?v=20260715.1';
-import { initArtifacts } from './artifacts.js?v=20260714.1';
+import { initProjects } from './projects.js?v=20260715.2';
+import { initArtifacts } from './artifacts.js?v=20260715.2';
 import { initModels } from './models.js?v=20260714.3';
 
 const eventBus = new EventTarget();
@@ -50,7 +50,7 @@ function alert(containerId, message, type = 'error') {
   box.className = `inline-alert ${type}`;
   box.setAttribute('role', type === 'error' ? 'alert' : 'status');
   box.textContent = message;
-  container.append(box);
+  container.replaceChildren(box);
 }
 
 function openDrawer({ eyebrow = '', title = '详情', html = '' }) {

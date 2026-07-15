@@ -201,6 +201,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .inline-alert { border-radius: 8px; padding: 10px 12px; }
 .inline-alert.error { background: var(--danger-soft); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent); }
 .inline-alert.warning { background: var(--warning-soft); color: var(--warning); }
+.inline-alert.success { background: var(--accent-soft); color: var(--success); border: 1px solid color-mix(in srgb, var(--success) 25%, transparent); }
+.inline-alert.progress { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); animation: alert-pulse 1.25s ease-in-out infinite alternate; }
+@keyframes alert-pulse { from { opacity: .62; } to { opacity: 1; } }
 .empty-state { min-height: 180px; display: grid; place-content: center; justify-items: center; gap: 8px; padding: 24px; text-align: center; color: var(--muted); }
 .empty-state strong { color: var(--text); font-size: 16px; }
 .toolbar { max-width: 1320px; margin: 0 auto 14px; display: flex; gap: 9px; }

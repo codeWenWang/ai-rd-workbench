@@ -13,11 +13,14 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from app.domain.errors import ExternalServiceError, ValidationError
+from app.infrastructure.projects.scanner import LANGUAGES
 
 
 _HOST_SOURCES = {"github.com": "github", "gitee.com": "gitee"}
 _SOURCE_LABELS = {"github": "GitHub", "gitee": "Gitee"}
 _PATH_COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_SOURCE_PATTERNS = tuple(sorted(f"*{suffix}" for suffix in LANGUAGES))
+_CLONE_ATTEMPTS = 2
 CommandRunner = Callable[..., subprocess.CompletedProcess]
 
 
@@ -96,24 +99,43 @@ class RemoteGitRepositoryManager:
         if target.exists():
             _remove_tree(target)
         temporary = self.cache_root / f".clone-{uuid4().hex}"
-        args = [
-            self.git_executable,
-            "clone",
-            "--depth",
-            "1",
-            "--single-branch",
-            "--no-tags",
-            remote.url,
-            str(temporary),
-        ]
+        args = [self.git_executable]
+        if remote.source_type == "github":
+            args.extend(["-c", "http.version=HTTP/1.1"])
+        args.extend([
+            "clone", "--depth", "1", "--single-branch", "--no-tags",
+        ])
+        if remote.source_type == "github":
+            args.extend(["--filter=blob:none", "--no-checkout"])
+        args.extend([remote.url, str(temporary)])
         try:
-            result = self.runner(
-                args,
-                cwd=self.cache_root,
-                timeout=self.clone_timeout_seconds,
-            )
-            if result.returncode != 0 or not self._valid_cache(temporary):
+            cloned = False
+            for _ in range(_CLONE_ATTEMPTS):
+                if temporary.exists():
+                    _remove_tree(temporary, ignore_errors=True)
+                result = self.runner(
+                    args,
+                    cwd=self.cache_root,
+                    timeout=self.clone_timeout_seconds,
+                )
+                if result.returncode == 0 and self._valid_cache(temporary):
+                    cloned = True
+                    break
+            if not cloned:
                 raise ExternalServiceError("无法克隆公开仓库，请检查仓库地址、网络或 Git 代理")
+            if remote.source_type == "github":
+                sparse = self.runner(
+                    [self.git_executable, "sparse-checkout", "set", "--no-cone", *_SOURCE_PATTERNS],
+                    cwd=temporary,
+                    timeout=self.clone_timeout_seconds,
+                )
+                checkout = self.runner(
+                    [self.git_executable, "checkout", "--force"],
+                    cwd=temporary,
+                    timeout=self.clone_timeout_seconds,
+                )
+                if sparse.returncode != 0 or checkout.returncode != 0:
+                    raise ExternalServiceError("无法检出仓库源码，请检查网络或 Git 代理")
             temporary.replace(target)
             return replace(remote, cache_path=target)
         except subprocess.TimeoutExpired as exc:

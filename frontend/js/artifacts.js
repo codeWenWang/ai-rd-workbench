@@ -1,5 +1,5 @@
 import { api, errorText, listFrom } from './api.js?v=20260714.1';
-import { activeProjectId } from './projects.js?v=20260714.1';
+import { activeProjectId } from './projects.js?v=20260715.2';
 
 let ui;
 const latest = new Map();
