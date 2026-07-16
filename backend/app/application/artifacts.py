@@ -40,7 +40,7 @@ class ArtifactUseCase:
         elif artifact_type == "sequence":
             content = render_sequence(insight)
         else:
-            content = render_api_docs(project, insight)
+            content = render_api_docs(project, insight, files)
         return self.analysis.save_artifact(
             project_id=project_id,
             artifact_type=artifact_type,

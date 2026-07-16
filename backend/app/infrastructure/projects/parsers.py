@@ -120,8 +120,7 @@ class JavaSourceParser:
         re.M,
     )
     METHOD_RE = re.compile(
-        r"(?P<annotations>(?:\s*@(GetMapping|PostMapping|PutMapping|PatchMapping|DeleteMapping|RequestMapping)"
-        r"(?:\s*\([^)]*\))?\s*)+)"
+        r"(?P<annotations>(?:\s*@[A-Za-z_$][\w$.]*(?:\s*\([^)]*\))?\s*)+)"
         r"(?:public\s+|protected\s+|private\s+|static\s+|final\s+|synchronized\s+|default\s+)*"
         r"(?:<[^>]+>\s*)?[A-Za-z_$][\w$<>,.?\[\] ]*\s+(?P<name>[A-Za-z_$][\w$]*)\s*\(",
         re.M,
@@ -153,10 +152,13 @@ class JavaSourceParser:
                 class_prefix = mappings[0][1]
         routes = []
         for match in self.METHOD_RE.finditer(content):
+            mappings = self._mappings(match.group("annotations"))
+            if not mappings:
+                continue
             method_name = match.group("name")
             line_number = content.count("\n", 0, match.start()) + 1
             symbols.append(ParsedSymbol(method_name, "method", line_number))
-            for method, path in self._mappings(match.group("annotations")):
+            for method, path in mappings:
                 routes.append(ParsedRoute(
                     method, _join_route_paths(class_prefix, path),
                     f"{class_name}.{method_name}", line_number,
@@ -279,4 +281,5 @@ def _mapping_paths(args: str) -> list[str]:
             expression = stripped[:closing + 1] if closing > 0 else ""
         else:
             expression = ""
-    return re.findall(r"['\"]([^'\"]+)['\"]", expression) or [""]
+    values = [match.group(2) for match in re.finditer(r"(['\"])(.*?)\1", expression)]
+    return values or [""]

@@ -64,6 +64,38 @@ public class RepositoryContentController {
     ]
 
 
+def test_java_parser_keeps_mapping_when_swagger_annotation_is_between_mapping_and_method() -> None:
+    content = """
+@RestController
+public class DepartmentController {
+    @GetMapping("/depts")
+    @Operation(summary = "部门列表查询")
+    public Result<List<Dept>> list() { return null; }
+}
+"""
+
+    parsed = ParserRegistry().parse("DepartmentController.java", content)
+
+    assert [(route.method, route.path, route.handler) for route in parsed.routes] == [
+        ("GET", "/depts", "DepartmentController.list"),
+    ]
+
+
+def test_java_parser_expands_mapping_path_arrays_without_punctuation_leaks() -> None:
+    content = """
+@RestController
+@RequestMapping("/v2")
+public class RegistryController {
+    @GetMapping({"", "/", "/**"})
+    public Object get() { return null; }
+}
+"""
+
+    parsed = ParserRegistry().parse("RegistryController.java", content)
+
+    assert [route.path for route in parsed.routes] == ["/v2", "/v2", "/v2/**"]
+
+
 def test_maven_parser_extracts_modules_and_internal_dependencies() -> None:
     content = """
 <project xmlns="http://maven.apache.org/POM/4.0.0">
