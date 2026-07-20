@@ -1,4 +1,4 @@
-import { initChat } from './chat.js?v=20260715.1';
+import { initChat } from './chat.js?v=20260716.1';
 import { initDocuments } from './documents.js?v=20260714.1';
 import { initMemories } from './memories.js?v=20260714.1';
 import { initDiagnostics } from './diagnostics.js?v=20260714.1';

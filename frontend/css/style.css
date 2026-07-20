@@ -94,11 +94,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .sidebar-header { min-height: 46px; display: flex; align-items: center; gap: 6px; }
 .brand { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; padding: 5px 7px; color: inherit; text-decoration: none; border-radius: 10px; }
 .brand:hover { background: var(--surface-hover); }
-.brand-mark { width: 32px; height: 32px; flex: 0 0 32px; display: grid; place-items: center; border-radius: 10px; background: var(--text); color: var(--bg); font-size: 11px; font-weight: 800; }
-.brand-copy { min-width: 0; display: grid; gap: 2px; }
-.brand-copy strong, .brand-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brand-copy strong { font-size: 13px; }
-.brand-copy small { color: var(--sidebar-muted); font-size: 11px; }
+.brand-mark { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line)); border-radius: 10px; background: color-mix(in srgb, var(--text) 94%, var(--accent)); box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 4px 12px rgba(0,0,0,.12); }
+.brand-logo { width: 26px; height: 26px; overflow: visible; }
+.brand-logo-bracket, .brand-logo-core { fill: none; stroke: #fff; stroke-width: 2.15; stroke-linecap: round; stroke-linejoin: round; }
+.brand-logo-core { opacity: .78; }
+.brand-logo-node { fill: #5ee8c1; stroke: color-mix(in srgb, #5ee8c1 65%, #fff); stroke-width: .75; }
+html[data-theme="dark"] .brand-mark { background: #0b1210; border-color: #285d50; box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 4px 14px rgba(0,0,0,.3); }
+.brand-copy { min-width: 0; display: grid; }
+.brand-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .icon-btn { width: 38px; height: 38px; flex: 0 0 38px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); display: inline-grid; place-items: center; padding: 0; }
 .icon-btn:hover { background: var(--surface-hover); }
 .sidebar-collapse { border: 0; background: transparent; color: var(--sidebar-muted); font-size: 23px; }
@@ -179,9 +182,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .message.user .message-content { max-width: min(78%, 680px); }
 .message-body { line-height: 1.78; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; }
 .message.user .message-body { width: fit-content; margin-left: auto; padding: 10px 15px; border-radius: 18px; background: var(--surface-3); }
-.assistant-avatar { width: 30px; height: 30px; flex: 0 0 30px; margin-top: 1px; display: grid; place-items: center; border-radius: 50%; background: var(--text); color: var(--bg); font-size: 9px; font-weight: 800; }
-.message.assistant .message-content { flex: 1; padding-top: 3px; }
-.message.failed .assistant-avatar { background: var(--danger); color: #fff; }
+.message.assistant .message-content { width: 100%; }
 .message-meta { min-width: 0; margin-top: 12px; display: flex; flex-wrap: wrap; gap: 7px; }
 .citation-button { max-width: 100%; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); color: var(--muted); padding: 5px 10px; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .citation-button:hover { background: var(--surface-hover); color: var(--text); }
@@ -346,7 +347,6 @@ dialog footer { padding: 13px 18px; border-top: 1px solid var(--line); display: 
 @media (max-width: 420px) {
   .page-header { gap: 10px; }
   .page-header .button { padding: 7px 10px; font-size: 12px; }
-  .assistant-avatar { width: 28px; height: 28px; flex-basis: 28px; }
   .tabs { gap: 14px; }
 }
 
@@ -372,8 +372,8 @@ dialog footer { padding: 13px 18px; border-top: 1px solid var(--line); display: 
 .chat-model-controls select { max-width: 210px; }
 .compare-toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .compare-toggle input { accent-color: var(--accent); }
-.message.comparison-message { width: min(980px,100%); }
-.comparison-turn { min-width: 0; border-left: 3px solid var(--accent); padding: 2px 0 2px 17px; }
+.message.comparison-message { width: min(860px,100%); }
+.comparison-turn { min-width: 0; padding: 2px 0; }
 .comparison-heading { margin-bottom: 12px; display: flex; align-items: baseline; gap: 10px; }
 .comparison-heading strong { font-size: 14px; }
 .comparison-heading span { color: var(--muted); font-size: 11px; }
@@ -421,7 +421,6 @@ html[data-theme="dark"] .artifact-diagram svg .edgeLabel { fill: #f4f4f5 !import
   .chat-model-controls { max-width: 58%; flex-wrap: wrap; gap: 5px; }
   .chat-model-controls select { max-width: 150px; height: 30px; font-size: 11px; }
   .comparison-grid { grid-template-columns: 1fr; }
-  .comparison-turn { padding-left: 12px; }
   .comparison-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
   .model-manager-toolbar, .model-provider-row { align-items: stretch; grid-template-columns: 1fr; }
   .model-manager-toolbar { flex-direction: column; }

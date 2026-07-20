@@ -29,6 +29,51 @@ test('sidebar owns project workspace, conversations, theme, and bottom diagnosti
 });
 
 
+test('platform brand uses the new name and a graphical logo without an edition subtitle', async () => {
+  const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
+
+  assert.match(html, /<title>AI研发赋能平台<\/title>/);
+  assert.match(html, /aria-label="AI研发赋能平台首页"/);
+  assert.match(html, /<strong>AI研发赋能平台<\/strong>/);
+  assert.match(html, /class="brand-logo"/);
+  assert.match(html, /<svg[^>]*viewBox="0 0 32 32"/);
+  assert.doesNotMatch(html, /本地单人增强版/);
+  assert.doesNotMatch(html, /研发知识工作台/);
+});
+
+
+test('dark theme keeps the platform logo on a dark high-contrast surface', async () => {
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+  const darkBrand = css.match(/html\[data-theme="dark"\] \.brand-mark\s*\{([^}]*)\}/)?.[1] || '';
+
+  assert.match(darkBrand, /background:\s*#[0-9a-f]{6}/i);
+  assert.match(darkBrand, /border-color:/);
+  assert.doesNotMatch(darkBrand, /var\(--text\)/);
+});
+
+
+test('assistant messages render as an avatar-free content stream', async () => {
+  const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(chatSource, /assistant-avatar/);
+  assert.doesNotMatch(css, /\.assistant-avatar/);
+  assert.match(css, /\.message\.assistant \.message-content\s*\{[^}]*width:\s*100%/s);
+});
+
+
+test('model comparison uses cards without a decorative left rule', async () => {
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+  const comparisonTurn = css.match(/\.comparison-turn\s*\{([^}]*)\}/)?.[1] || '';
+  const comparisonRules = [...css.matchAll(/\.comparison-turn\s*\{([^}]*)\}/g)].map(match => match[1]).join('\n');
+
+  assert.doesNotMatch(comparisonTurn, /border-left/);
+  assert.match(comparisonTurn, /padding:\s*2px 0/);
+  assert.doesNotMatch(comparisonRules, /padding-left/);
+  assert.match(css, /\.message\.comparison-message\s*\{[^}]*width:\s*min\(860px,\s*100%\)/s);
+});
+
+
 test('stylesheet defines collapsed sidebar, dark theme, and safe composer', async () => {
   const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
 

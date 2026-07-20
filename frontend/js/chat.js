@@ -223,13 +223,6 @@ function messageNode(message) {
 
   const content = document.createElement('div');
   content.className = 'message-content';
-  if (message.role === 'assistant') {
-    const avatar = document.createElement('div');
-    avatar.className = 'assistant-avatar';
-    avatar.textContent = 'AI';
-    avatar.setAttribute('aria-hidden', 'true');
-    article.append(avatar);
-  }
 
   if (message.metadata.type === 'model_comparison') {
     content.append(comparisonTurnNode(message));
