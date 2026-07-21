@@ -1,5 +1,7 @@
+import asyncio
 from pathlib import Path
 import shutil
+import time
 
 from fastapi.testclient import TestClient
 
@@ -68,6 +70,12 @@ class UnavailableEmbeddings:
 
     async def embed_query(self, text):
         raise RuntimeError("embedding service unavailable")
+
+
+class SlowProjectIndexer:
+    async def index(self, project_id):
+        await asyncio.sleep(0.3)
+        return 1
 
 
 class FakeRemoteGit:
@@ -152,6 +160,25 @@ def test_remote_project_scan_uses_cache_when_update_is_unavailable(tmp_path: Pat
     assert scanned.json()["file_count"] == 1
     assert scanned.json()["route_count"] == 1
     assert "remote_update_unavailable" in scanned.json()["warnings"]
+
+
+def test_project_scan_caps_semantic_index_wait_time(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+    container = client.app.state.container
+    object.__setattr__(container.settings, "project_index_timeout_seconds", 0.01)
+    container.__dict__["project_indexer"] = SlowProjectIndexer()
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "main.py").write_text("def run(): return 1", encoding="utf-8")
+    project = client.post("/api/projects", json={"name": "fast", "root_path": str(source)}).json()
+
+    started = time.perf_counter()
+    scanned = client.post(f"/api/projects/{project['id']}/scan")
+    elapsed = time.perf_counter() - started
+
+    assert scanned.status_code == 200
+    assert elapsed < 0.2
+    assert "project_semantic_index_timeout" in scanned.json()["warnings"]
 
 
 def test_remote_project_chat_uses_local_overview_when_semantic_services_are_unavailable(

@@ -1,10 +1,11 @@
-import { initChat } from './chat.js?v=20260716.1';
-import { initDocuments } from './documents.js?v=20260714.1';
-import { initMemories } from './memories.js?v=20260714.1';
-import { initDiagnostics } from './diagnostics.js?v=20260714.1';
-import { initProjects } from './projects.js?v=20260715.2';
-import { initArtifacts } from './artifacts.js?v=20260716.1';
-import { initModels } from './models.js?v=20260714.3';
+import { initChat } from './chat.js?v=20260721.7';
+import { initDocuments } from './documents.js?v=20260721.7';
+import { initMemories } from './memories.js?v=20260721.7';
+import { initDiagnostics } from './diagnostics.js?v=20260721.7';
+import { initProjects } from './projects.js?v=20260721.7';
+import { initArtifacts } from './artifacts.js?v=20260721.7';
+import { initModels } from './models.js?v=20260721.7';
+import { escapeHtml, renderMarkdown } from './markdown.js?v=20260721.1';
 
 const eventBus = new EventTarget();
 const el = id => document.getElementById(id);
@@ -12,9 +13,7 @@ const THEME_KEY = 'workbench_theme';
 const SIDEBAR_KEY = 'workbench_sidebar_collapsed';
 
 function escape(value = '') {
-  const node = document.createElement('div');
-  node.textContent = String(value);
-  return node.innerHTML;
+  return escapeHtml(value);
 }
 
 function formatTime(value) {
@@ -89,6 +88,31 @@ function buildField(field) {
       input.append(option);
     }
     input.value = field.value || '';
+  } else if (field.type === 'directory') {
+    const picker = document.createElement('div');
+    picker.className = 'directory-picker';
+    input = document.createElement('input');
+    input.type = 'text';
+    input.readOnly = true;
+    input.placeholder = field.placeholder || '点击右侧按钮选择本机文件夹';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'button secondary';
+    button.textContent = '选择文件夹';
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        const response = await fetch('/api/projects/select-directory', { method: 'POST' });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.detail?.message || payload?.detail || '无法打开文件夹选择器');
+        input.value = payload.path || '';
+      } catch (error) {
+        el('dialog-error').textContent = error.message;
+        el('dialog-error').classList.remove('hidden');
+      } finally { button.disabled = false; }
+    });
+    picker.append(input, button);
+    label.append(picker);
   } else {
     input = document.createElement('input');
     input.type = field.type || 'text';
@@ -96,9 +120,10 @@ function buildField(field) {
     if (field.accept) input.accept = field.accept;
   }
   input.name = field.name;
+  input.autocomplete = field.autocomplete || 'off';
   if (field.required) input.required = true;
   if (field.maxlength) input.maxLength = field.maxlength;
-  label.append(input);
+  if (field.type !== 'directory') label.append(input);
   if (field.requiredWhen) {
     label.dataset.requiredField = Object.keys(field.requiredWhen)[0];
     label.dataset.requiredValue = Object.values(field.requiredWhen)[0];
@@ -131,6 +156,7 @@ function formDialog({ title, submitText = '确认', fields = [] }) {
   const dialog = el('app-dialog');
   const body = el('dialog-body');
   const form = el('dialog-form');
+  form.autocomplete = 'off';
   el('dialog-title').textContent = title;
   el('dialog-submit').textContent = submitText;
   el('dialog-submit').className = 'button primary';
@@ -205,7 +231,7 @@ function confirmDialog(title, message, submitText = '确认') {
 }
 
 const ui = {
-  escape, formatTime, busy, alert, openDrawer, closeDrawer, formDialog, confirmDialog,
+  escape, renderMarkdown, formatTime, busy, alert, openDrawer, closeDrawer, formDialog, confirmDialog,
   showView: switchView,
   emit: (name, detail) => eventBus.dispatchEvent(new CustomEvent(name, { detail })),
   on: (name, handler) => eventBus.addEventListener(name, event => handler(event.detail)),
@@ -246,25 +272,10 @@ function setSidebarCollapsed(collapsed) {
   localStorage.setItem(SIDEBAR_KEY, String(collapsed));
 }
 
-function setAnalysisExpanded(expanded) {
-  const group = el('analysis-nav');
-  const toggle = el('analysis-toggle');
-  const menu = el('analysis-menu');
-  group.classList.toggle('collapsed', !expanded);
-  toggle.setAttribute('aria-expanded', String(expanded));
-  toggle.title = expanded ? '收起项目分析' : '展开项目分析';
-  menu.setAttribute('aria-hidden', String(!expanded));
-  menu.inert = !expanded;
-}
-
 async function initialize() {
   setTheme(document.documentElement.dataset.theme || 'light');
   setSidebarCollapsed(localStorage.getItem(SIDEBAR_KEY) === 'true');
-  setAnalysisExpanded(false);
-  document.querySelectorAll('button.nav-item[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
-  el('analysis-toggle').addEventListener('click', () => {
-    setAnalysisExpanded(el('analysis-toggle').getAttribute('aria-expanded') !== 'true');
-  });
+  document.querySelectorAll('button[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
   el('theme-toggle').addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
   el('diagnostics-toggle').addEventListener('click', () => switchView('diagnostics'));
   el('sidebar-collapse').addEventListener('click', () => {

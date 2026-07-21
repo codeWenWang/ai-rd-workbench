@@ -20,8 +20,22 @@ class ProjectAnalysisUseCase:
             (item, self.parsers.parse(item.relative_path, item.content))
             for item in scan.files
         ]
+        server_routes = {
+            (route.method, route.path)
+            for _, parsed in parsed_items
+            for route in parsed.routes
+            if not route.handler.startswith("前端 ")
+        }
+        for _, parsed in parsed_items:
+            parsed.routes = [
+                route for route in parsed.routes
+                if not (
+                    route.handler.startswith("前端 ")
+                    and (route.method, route.path) in server_routes
+                )
+            ]
         self.analysis.replace_scan(project_id, parsed_items)
-        tech_stack = sorted({item.language for item in scan.files})
+        tech_stack = _main_tech_stack(scan.files)
         self.projects.update_scan(
             project_id,
             revision=scan.revision,
@@ -41,3 +55,25 @@ class ProjectAnalysisUseCase:
             relation_count=relation_count,
             skipped_count=len(scan.skipped),
         )
+
+
+def _main_tech_stack(files) -> list[str]:
+    languages = {item.language.casefold() for item in files}
+    content = "\n".join(item.content[:20000] for item in files)
+    stack = []
+    for language in ("java", "python", "typescript", "javascript", "html", "css"):
+        if language in languages:
+            stack.append(language)
+    framework_markers = (
+        ("Spring Boot", ("@SpringBootApplication", "spring-boot")),
+        ("FastAPI", ("FastAPI(", "from fastapi", "import fastapi")),
+        ("LangChain", ("langchain",)),
+        ("LangGraph", ("langgraph",)),
+        ("Vue", ("vue", "createApp(")),
+        ("React", ("from 'react'", 'from "react"', "react-dom")),
+    )
+    lowered = content.casefold()
+    for label, markers in framework_markers:
+        if any(marker.casefold() in lowered for marker in markers):
+            stack.append(label)
+    return list(dict.fromkeys(stack))

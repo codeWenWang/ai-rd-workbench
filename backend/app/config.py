@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     git_cache_dir: str = str(BACKEND_DIR / "data" / "git-projects")
     git_clone_timeout_seconds: int = Field(default=180, ge=10, le=1800)
     git_update_timeout_seconds: int = Field(default=90, ge=5, le=600)
+    project_index_timeout_seconds: float = Field(default=20.0, ge=0.01, le=120)
 
 
 @lru_cache

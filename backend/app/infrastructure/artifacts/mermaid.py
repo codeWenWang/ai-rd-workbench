@@ -5,54 +5,84 @@ from os.path import commonprefix
 def render_architecture(insight) -> str:
     if len(insight.modules) > 12:
         return _render_grouped_architecture(insight.modules)
-    lines = ["flowchart LR"]
+    lines = ["flowchart TB", '    client["客户端 / 调用方"]']
     if not insight.modules:
         lines.append('    project["当前静态分析未识别到可聚合模块"]')
         return "\n".join(lines)
-    for module in insight.modules:
-        module_id = _node_id(module.name)
-        languages = " / ".join(module.languages[:3]) or "待识别"
-        lines.append(
-            f'    {module_id}["{_label(module.name)}<br/>{_label(module.role)} · {_label(languages)} · {module.file_count} 文件"]'
-        )
+    layers = (
+        ("client_layer", "客户端层", {"界面"}),
+        ("business_layer", "业务服务层", {"入口服务", "核心", "协议适配", "功能模块", "测试", "迁移"}),
+        ("data_layer", "数据层", {"持久化", "存储"}),
+    )
+    for layer_id, layer_name, roles in layers:
+        grouped = [module for module in insight.modules if module.role in roles]
+        if not grouped:
+            continue
+        lines.append(f'    subgraph {layer_id}["{layer_name}"]')
+        for module in grouped:
+            module_id = _node_id(module.name)
+            languages = " / ".join(module.languages[:3]) or "待识别"
+            lines.append(
+                f'        {module_id}["{_label(module.name)}<br/>{_label(module.role)} · {_label(languages)} · {module.file_count} 文件"]'
+            )
+        lines.append("    end")
     module_names = {module.name for module in insight.modules}
     for module in insight.modules:
         for dependency in module.dependencies:
             if dependency in module_names:
                 lines.append(f"    {_node_id(module.name)} --> {_node_id(dependency)}")
+    entry_modules = [module for module in insight.modules if module.role in {"界面", "入口服务"}]
+    if not entry_modules:
+        entry_modules = insight.modules[:1]
+    for module in entry_modules[:4]:
+        lines.append(f"    client --> {_node_id(module.name)}")
+    for module in insight.modules:
+        for path in module.evidence_paths:
+            lines.append(f"    %% evidence: {_label(path)}")
     return "\n".join(lines)
 
 
 def _render_grouped_architecture(modules) -> str:
-    role_ids = {
-        "入口服务": "group_entry", "界面": "group_ui", "核心": "group_core",
-        "协议适配": "group_protocol", "持久化": "group_persistence",
-        "存储": "group_storage", "迁移": "group_migration",
-        "测试": "group_test", "功能模块": "group_feature",
-    }
-    groups = {}
-    module_roles = {module.name: module.role for module in modules}
+    layer_ids = {"客户端层": "layer_client", "业务服务层": "layer_business", "数据层": "layer_data"}
+    groups = {name: [] for name in layer_ids}
+    module_layers = {}
     for module in modules:
-        groups.setdefault(module.role, []).append(module)
+        layer = _architecture_layer(module.role)
+        groups[layer].append(module)
+        module_layers[module.name] = layer
     lines = ["flowchart TB"]
-    for role, grouped in sorted(groups.items(), key=lambda item: (_role_priority(item[0]), item[0])):
-        node_id = role_ids.get(role, f"group_{_node_id(role)}")
-        names = [item.name for item in sorted(grouped, key=lambda item: item.name)]
+    for layer, grouped in groups.items():
+        if not grouped:
+            continue
+        node_id = layer_ids[layer]
+        names = [f"{item.name}（{item.role}）" for item in sorted(grouped, key=lambda item: item.name)]
         shown, remainder = _group_summary(names)
         lines.append(
-            f'    {node_id}["{_label(role)} · {len(names)} 个模块<br/>{_label(shown)}{remainder}"]'
+            f'    {node_id}["{_label(layer)} · {len(names)} 个模块<br/>{_label(shown)}{remainder}"]'
         )
     edges = set()
     for module in modules:
         for dependency in module.dependencies:
-            target_role = module_roles.get(dependency)
-            if target_role and target_role != module.role:
-                edges.add((module.role, target_role))
-    for source_role, target_role in sorted(edges, key=lambda item: (_role_priority(item[0]), _role_priority(item[1]), item)):
-        source_id = role_ids.get(source_role, f"group_{_node_id(source_role)}")
-        target_id = role_ids.get(target_role, f"group_{_node_id(target_role)}")
+            target_layer = module_layers.get(dependency)
+            source_layer = module_layers.get(module.name)
+            if target_layer and target_layer != source_layer:
+                edges.add((source_layer, target_layer))
+    for source_layer, target_layer in sorted(edges):
+        source_id = layer_ids[source_layer]
+        target_id = layer_ids[target_layer]
         lines.append(f"    {source_id} --> {target_id}")
+    for module in modules:
+        for path in module.evidence_paths:
+            lines.append(f"    %% evidence: {_label(path)}")
     return "\n".join(lines)
+
+
+def _architecture_layer(role: str) -> str:
+    if role == "界面":
+        return "客户端层"
+    if role in {"持久化", "存储"}:
+        return "数据层"
+    return "业务服务层"
 
 
 def _group_summary(names: list[str]) -> tuple[str, str]:

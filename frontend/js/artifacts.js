@@ -1,8 +1,9 @@
-import { api, errorText, listFrom } from './api.js?v=20260714.1';
-import { activeProjectId } from './projects.js?v=20260715.2';
+import { api, errorText, listFrom } from './api.js?v=20260721.7';
+import { activeProjectId, projectFileMetadata } from './projects.js?v=20260721.7';
 
 let ui;
 const latest = new Map();
+let projectRoutes = [];
 
 export function mermaidThemeConfig(theme) {
   if (theme !== 'dark') return { startOnLoad: false, theme: 'default' };
@@ -61,18 +62,57 @@ function contentNode(view, artifact) {
   meta.textContent = `${artifact.status === 'stale' ? '源码已变化，需要重新生成' : '当前版本'} · ${artifact.source_revision?.slice(0, 10) || ''}`;
   container.append(meta);
   if (artifact.format === 'mermaid') {
+    if (view.dataset.artifactType === 'sequence' && projectRoutes.length) {
+      const scenarios = document.createElement('nav');
+      scenarios.className = 'sequence-scenarios';
+      scenarios.setAttribute('aria-label', '时序图场景');
+      const overall = document.createElement('button');
+      overall.type = 'button';
+      overall.className = 'active';
+      overall.textContent = '整体时序';
+      scenarios.append(overall);
+      for (const route of projectRoutes.slice(0, 12)) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = `${route.method} ${route.path}`;
+        button.addEventListener('click', () => {
+          scenarios.querySelectorAll('button').forEach(item => item.classList.toggle('active', item === button));
+          renderDiagram(diagram, featureSequence(route));
+        });
+        scenarios.append(button);
+      }
+      overall.addEventListener('click', () => {
+        scenarios.querySelectorAll('button').forEach(item => item.classList.toggle('active', item === overall));
+        renderDiagram(diagram, artifact.content);
+      });
+      container.append(scenarios);
+    }
     const diagram = document.createElement('pre');
     diagram.className = `mermaid artifact-diagram artifact-${view.dataset.artifactType}`;
     diagram.textContent = artifact.content;
     container.append(diagram);
-    if (globalThis.mermaid) {
-      globalThis.mermaid.initialize(mermaidThemeConfig(document.documentElement.dataset.theme));
-      globalThis.mermaid.run({ nodes: [diagram] }).catch(() => { diagram.classList.add('artifact-code'); });
-    } else diagram.classList.add('artifact-code');
+    renderDiagram(diagram, artifact.content);
+    const evidencePaths = [...new Set((artifact.content.match(/[A-Za-z0-9_./-]+\.(?:py|java|js|ts|tsx|jsx|vue|go|cs)(?::\d+)?/g) || []))];
+    if (evidencePaths.length) {
+      const evidence = document.createElement('section');
+      evidence.className = 'artifact-evidence';
+      evidence.innerHTML = '<h2>源码证据</h2><p>点击证据可查看扫描时保存的源码片段。</p>';
+      const links = document.createElement('div');
+      for (const path of evidencePaths.slice(0, 12)) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'evidence-link';
+        button.textContent = path;
+        button.addEventListener('click', () => showEvidence(path));
+        links.append(button);
+      }
+      evidence.append(links);
+      container.append(evidence);
+    }
   } else {
-    const markdown = document.createElement('pre');
+    const markdown = document.createElement('article');
     markdown.className = 'artifact-markdown';
-    markdown.textContent = artifact.content;
+    markdown.innerHTML = ui.renderMarkdown(artifact.content);
     container.append(markdown);
   }
 }
@@ -85,10 +125,15 @@ function renderAll() {
 
 async function loadArtifacts() {
   latest.clear();
+  projectRoutes = [];
   const projectId = activeProjectId();
   if (!projectId) return renderAll();
   try {
-    for (const item of listFrom(await api.artifacts(projectId))) {
+    const [artifactPayload, routePayload] = await Promise.all([
+      api.artifacts(projectId), api.projectRoutes(projectId),
+    ]);
+    projectRoutes = listFrom(routePayload);
+    for (const item of listFrom(artifactPayload)) {
       if (!latest.has(item.artifact_type)) latest.set(item.artifact_type, item);
     }
   } catch { /* empty project */ }
@@ -122,4 +167,63 @@ export async function initArtifacts(sharedUi) {
   ui.on('project:scanned', loadArtifacts);
   ui.on('theme:changed', renderAll);
   await loadArtifacts();
+}
+
+function renderDiagram(diagram, content) {
+  diagram.removeAttribute('data-processed');
+  diagram.classList.remove('artifact-code');
+  diagram.textContent = content;
+  if (!globalThis.mermaid) { diagram.classList.add('artifact-code'); return; }
+  globalThis.mermaid.initialize(mermaidThemeConfig(document.documentElement.dataset.theme));
+  globalThis.mermaid.run({ nodes: [diagram] }).catch(() => { diagram.classList.add('artifact-code'); });
+}
+
+function featureSequence(route) {
+  const method = String(route.method || 'GET').replace(/[^A-Z]/g, '') || 'GET';
+  const path = String(route.path || '/').replaceAll(':', '：').replaceAll('\n', ' ');
+  const handler = String(route.handler || '处理器').replaceAll(':', '：').replaceAll('\n', ' ');
+  const source = String(route.source_path || '').replaceAll(':', '：').replaceAll('\n', ' ');
+  return [
+    'sequenceDiagram',
+    '    participant U as 客户端',
+    '    participant A as 应用 API',
+    `    participant H as ${handler}`,
+    `    U->>A: ${method} ${path}`,
+    '    A->>H: 调用处理器',
+    '    H-->>A: 返回业务结果',
+    '    A-->>U: HTTP 响应',
+    `    Note over A,H: 源码证据 ${source}:${Number(route.line_number || 1)}`,
+  ].join('\n');
+}
+
+async function showEvidence(location) {
+  const file = projectFileMetadata(location);
+  if (!file) {
+    ui.openDrawer({ eyebrow: '源码证据', title: location, html: '<div class="source-text">当前扫描结果中未找到该文件，请重新扫描项目。</div>' });
+    return;
+  }
+  try {
+    const detail = await api.projectFile(activeProjectId(), file.id);
+    const snippet = sourceSnippet(detail.content || file.excerpt || '', location);
+    ui.openDrawer({
+      eyebrow: '源码证据',
+      title: location,
+      html: `<div class="source-text source-code">${ui.escape(snippet)}</div>`,
+    });
+  } catch {
+    ui.openDrawer({ eyebrow: '源码证据', title: location, html: `<div class="source-text source-code">${ui.escape(file.excerpt || '')}</div>` });
+  }
+}
+
+function sourceSnippet(content, location) {
+  const lines = String(content || '').split('\n');
+  const match = String(location || '').match(/:(\d+)$/);
+  if (!match) return lines.slice(0, 80).map((line, index) => `${String(index + 1).padStart(4)}  ${line}`).join('\n');
+  const lineNumber = Math.max(1, Number(match[1]));
+  const start = Math.max(0, lineNumber - 7);
+  const end = Math.min(lines.length, lineNumber + 6);
+  return lines.slice(start, end).map((line, index) => {
+    const current = start + index + 1;
+    return `${current === lineNumber ? '>' : ' '} ${String(current).padStart(4)}  ${line}`;
+  }).join('\n');
 }

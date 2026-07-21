@@ -13,6 +13,7 @@ class ProjectModuleInsight:
     file_count: int
     languages: list[str] = field(default_factory=list)
     dependencies: list[str] = field(default_factory=list)
+    evidence_paths: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -65,6 +66,10 @@ class ProjectInsightBuilder:
                 file_count=len(module_files[name]),
                 languages=sorted({item.language for item in module_files[name]}),
                 dependencies=sorted(dependencies[name]),
+                evidence_paths=[
+                    item.relative_path
+                    for item in sorted(module_files[name], key=lambda file: (_evidence_priority(file), file.relative_path))[:2]
+                ],
             )
             for name in sorted(module_names)
         ]
@@ -212,6 +217,18 @@ def _is_entrypoint(file) -> bool:
         or "FastAPI(" in content
         or ".listen(" in content
     )
+
+
+def _evidence_priority(file) -> tuple[int, int]:
+    path = file.relative_path.casefold()
+    content = file.content
+    if _is_entrypoint(file):
+        return 0, len(path)
+    if any(token in path for token in ("controller", "router", "service", "repository")):
+        return 1, len(path)
+    if PurePosixPath(path).name in {"pom.xml", "package.json", "pyproject.toml"}:
+        return 2, len(path)
+    return 3, len(path)
 
 
 def _project_type(files, endpoints, has_maven_modules: bool) -> str:

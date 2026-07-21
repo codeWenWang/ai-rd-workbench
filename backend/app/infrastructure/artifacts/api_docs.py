@@ -78,15 +78,25 @@ def render_api_docs(project, insight, files=None) -> str:
 
 def _endpoint_document(endpoint, source, models: dict[str, JavaModel]) -> ApiEndpointDoc:
     if not source or source.language != "java":
+        parameters = [
+            ApiParameter(name, "string", "路径参数")
+            for name in re.findall(r"\{([^}]+)\}", endpoint.path)
+        ]
+        request_body = (
+            {"示例字段": "请根据实际请求体补充"}
+            if endpoint.method in {"POST", "PUT"} else UNKNOWN
+        )
         return ApiEndpointDoc(
             title=_fallback_title(endpoint.handler, endpoint.method, endpoint.path),
             method=endpoint.method,
             path=endpoint.path,
-            parameters=[],
-            path_example=_path_example(endpoint.path, []),
+            parameters=parameters,
+            path_example=_path_example(endpoint.path, parameters),
+            request_body=request_body,
+            response_body={"code": 1, "message": "success", "data": {}},
             source_path=endpoint.source_path,
             line_number=endpoint.line_number,
-            notes=["当前解析器未确认请求参数和响应结构"],
+            notes=["请求体与响应为通用静态推断样例，请以实际接口实现和运行结果为准"],
         )
 
     method_name = endpoint.handler.rsplit(".", 1)[-1]
@@ -344,7 +354,7 @@ def _java_models(files) -> dict[str, JavaModel]:
     )
     field_pattern = re.compile(
         r"\b(?:private|protected|public)\s+"
-        r"(?!(?:static\s+)?final\s+[A-Z0-9_]+\s*=)"
+        r"(?!static\s+)"
         r"(?:final\s+)?(?P<type>[A-Za-z_$][\w$., ?<>\[\]]*)\s+"
         r"(?P<name>[A-Za-z_$][\w$]*)\s*(?:=[^;]*)?;"
     )

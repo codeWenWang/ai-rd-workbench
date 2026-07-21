@@ -89,6 +89,15 @@ class JavaScriptModuleParser:
     FUNCTION_RE = re.compile(
         r"(?:export\s+)?(?:async\s+)?function\s+(?P<name>[A-Za-z_$][\w$]*)"
     )
+    FETCH_RE = re.compile(
+        r"\bfetch\s*\(\s*(['\"])(?P<path>/[^'\"]*)\1(?P<options>[^)]*)\)",
+        re.S,
+    )
+    CLIENT_RE = re.compile(
+        r"\b(?:axios|api|http)\.(?P<method>get|post|put|delete)\s*"
+        r"\(\s*(['\"])(?P<path>/[^'\"]*)\2",
+        re.I,
+    )
 
     def parse(self, relative_path: str, content: str) -> ParsedFile:
         imports = [match.group("path") for match in self.IMPORT_RE.finditer(content)]
@@ -96,7 +105,21 @@ class JavaScriptModuleParser:
             ParsedSymbol(match.group("name"), "function", content.count("\n", 0, match.start()) + 1)
             for match in self.FUNCTION_RE.finditer(content)
         ]
-        return ParsedFile(relative_path, "javascript", _unique(imports), symbols)
+        routes = []
+        for match in self.FETCH_RE.finditer(content):
+            method_match = re.search(r"\bmethod\s*:\s*['\"](GET|POST|PUT|DELETE)['\"]", match.group("options"), re.I)
+            method = method_match.group(1).upper() if method_match else "GET"
+            routes.append(ParsedRoute(
+                method, match.group("path"), "前端 fetch 请求",
+                content.count("\n", 0, match.start()) + 1,
+            ))
+        for match in self.CLIENT_RE.finditer(content):
+            routes.append(ParsedRoute(
+                match.group("method").upper(), match.group("path"), "前端 HTTP 客户端请求",
+                content.count("\n", 0, match.start()) + 1,
+            ))
+        language = "typescript" if Path(relative_path).suffix.casefold() in {".ts", ".tsx"} else "javascript"
+        return ParsedFile(relative_path, language, _unique(imports), symbols, routes=routes)
 
 
 class HtmlReferenceParser:
@@ -235,7 +258,7 @@ class ParserRegistry:
         suffix = Path(relative_path).suffix.casefold()
         if suffix == ".py":
             return self.python.parse(relative_path, content)
-        if suffix in {".js", ".mjs", ".cjs"}:
+        if suffix in {".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".vue"}:
             return self.javascript.parse(relative_path, content)
         if suffix in {".html", ".htm"}:
             return self.html.parse(relative_path, content)

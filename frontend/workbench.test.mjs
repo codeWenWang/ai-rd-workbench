@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 
-test('sidebar owns project workspace, conversations, theme, and bottom diagnostics', async () => {
+test('sidebar follows a compact Codex-style navigation and workspace hierarchy', async () => {
   const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
   const start = html.indexOf('<aside class="sidebar"');
   const end = html.indexOf('</aside>', start);
@@ -11,21 +11,134 @@ test('sidebar owns project workspace, conversations, theme, and bottom diagnosti
 
   assert.match(sidebar, /id="sidebar-collapse"/);
   assert.match(sidebar, /id="new-conversation"/);
-  assert.match(sidebar, /id="project-selector"/);
   assert.match(sidebar, /id="add-project"/);
-  assert.match(sidebar, /class="analysis-nav collapsed"/);
-  assert.match(sidebar, /id="analysis-toggle"[^>]*aria-expanded="false"/);
-  assert.match(sidebar, /id="analysis-menu"/);
-  assert.match(sidebar, /data-view="architecture"/);
-  assert.match(sidebar, /data-view="flow"/);
-  assert.match(sidebar, /data-view="sequence"/);
-  assert.match(sidebar, /data-view="project-api"/);
+  assert.match(sidebar, /id="sidebar-projects"/);
   assert.match(sidebar, /id="conversation-list"/);
+  assert.match(sidebar, /id="settings-menu"/);
   assert.match(sidebar, /id="theme-toggle"/);
   assert.match(sidebar, /id="diagnostics-toggle"/);
+  assert.doesNotMatch(sidebar, /id="project-selector"/);
+  assert.doesNotMatch(sidebar, /项目问答/);
+  assert.doesNotMatch(sidebar, /id="analysis-nav"/);
   assert.doesNotMatch(sidebar, /href="\/docs"/);
   assert.doesNotMatch(html, /class="conversation-panel"/);
   assert.match(html, /id="remove-project"/);
+  assert.match(html, /class="[^"]*overview-analysis/);
+  assert.match(html, /data-view="architecture"/);
+  assert.match(html, /data-view="flow"/);
+  assert.match(html, /data-view="sequence"/);
+  assert.match(html, /data-view="project-api"/);
+});
+
+
+test('composer owns the primary model switcher next to the send button', async () => {
+  const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
+  const composerStart = html.indexOf('<form id="chat-form"');
+  const composerEnd = html.indexOf('</form>', composerStart);
+  const composer = html.slice(composerStart, composerEnd);
+
+  assert.match(composer, /id="chat-model"/);
+  assert.match(composer, /class="composer-model"/);
+  assert.match(composer, /id="send-message"/);
+});
+
+
+test('sidebar uses one scroll region and a project parent beside daily conversations', async () => {
+  const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.match(html, /class="sidebar-scroll"/);
+  assert.match(html, /id="project-root-toggle"/);
+  assert.match(html, /id="project-source-list"/);
+  assert.match(css, /\.sidebar-scroll\s*\{[^}]*overflow-y:\s*auto/);
+  assert.match(css, /\.project-source-toggle[^}]*display:\s*flex/);
+  assert.match(css, /\.project-source-toggle[^}]*\.source-chevron[^}]*opacity:\s*0/);
+});
+
+
+test('collapsed project parent removes its layout height and keeps daily conversations directly below', async () => {
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.match(css, /\.history-section\.projects-collapsed \.project-source-list\s*\{[^}]*display:\s*none/);
+  assert.doesNotMatch(css, /\.history-section\.projects-collapsed \.project-source-list\s*\{[^}]*grid-template-rows:\s*0fr/);
+});
+
+
+test('all hierarchy chevrons sit immediately after their labels', async () => {
+  const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
+  const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.match(html, /<strong id="history-title">项目<\/strong><span class="root-chevron"/);
+  assert.match(chatSource, /<strong>\$\{ui\.escape\(source\.label\)\}<\/strong><span class="source-chevron"/);
+  assert.match(chatSource, /<strong>日常对话<\/strong><span class="daily-chevron"/);
+  assert.match(css, /\.project-root-toggle[^}]*display:\s*inline-flex/);
+  assert.match(css, /\.project-source-toggle[^}]*display:\s*flex/);
+});
+
+
+test('project row itself toggles conversations and changes folder state without a separate arrow button', async () => {
+  const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(chatSource, /className = 'project-history-open'/);
+  assert.match(chatSource, /className = 'project-history-toggle'/);
+  assert.match(chatSource, /project-history-toggle[\s\S]*folder-glyph[\s\S]*groupData\.name/);
+  assert.match(chatSource, /toggle\.addEventListener\('click'[\s\S]*setProjectGroupExpanded/);
+});
+
+
+test('composer is a raised two-row surface with compact model and send controls', async () => {
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.match(css, /\.composer-shell[^}]*padding-bottom:\s*max\(30px/);
+  assert.match(css, /\.composer\s*\{[^}]*grid-template-rows:\s*auto\s+32px/);
+  assert.match(css, /\.composer textarea[^}]*grid-column:\s*1\s*\/\s*-1/);
+  assert.match(css, /\.composer-model select[^}]*height:\s*28px/);
+});
+
+
+test('project file tree preserves nested folders and file metadata', async () => {
+  globalThis.localStorage ??= { getItem: () => '', setItem: () => {}, removeItem: () => {} };
+  const projects = await import(`./js/projects.js?tree-test=${Date.now()}`);
+
+  assert.equal(typeof projects.buildProjectFileTree, 'function');
+  const tree = projects.buildProjectFileTree([
+    { relative_path: 'src/main/App.java', language: 'java', size_bytes: 120 },
+    { relative_path: 'src/test/AppTest.java', language: 'java', size_bytes: 80 },
+    { relative_path: 'README.md', language: 'markdown', size_bytes: 20 },
+  ]);
+
+  assert.equal(tree[0].name, 'src');
+  assert.equal(tree[0].type, 'folder');
+  assert.equal(tree[0].children[0].name, 'main');
+  assert.equal(tree[0].children[0].children[0].name, 'App.java');
+  assert.equal(tree[1].name, 'README.md');
+  assert.equal(tree[1].sizeBytes, 20);
+});
+
+
+test('project guide explains capabilities and gives concrete source reading steps', async () => {
+  globalThis.localStorage ??= { getItem: () => '', setItem: () => {}, removeItem: () => {} };
+  const projects = await import(`./js/projects.js?guide-test=${Date.now()}`);
+  const guide = projects.buildProjectGuide(
+    { name: '任务平台', source_type: 'local', tech_stack: ['java', 'Spring Boot', 'vue'] },
+    [
+      { relative_path: 'README.md' },
+      { relative_path: 'server/src/DemoApplication.java' },
+      { relative_path: 'server/src/TaskController.java' },
+      { relative_path: 'server/src/TaskService.java' },
+      { relative_path: 'server/src/TaskRepository.java' },
+      { relative_path: 'web/src/App.vue' },
+    ],
+    [{ method: 'GET', path: '/api/tasks' }, { method: 'POST', path: '/api/tasks' }],
+  );
+
+  assert.match(guide.summary, /任务平台/);
+  assert.match(guide.summary, /Java、Spring Boot、Vue/);
+  assert.match(guide.capabilities.join(' '), /2 个接口/);
+  assert.deepEqual(guide.readingSteps.slice(0, 3).map(item => item.path), [
+    'README.md', 'server/src/DemoApplication.java', 'server/src/TaskController.java',
+  ]);
 });
 
 
@@ -82,19 +195,41 @@ test('stylesheet defines collapsed sidebar, dark theme, and safe composer', asyn
   assert.match(css, /\.composer-shell/);
   assert.match(css, /padding-bottom:\s*max\(/);
   assert.match(css, /\.composer-shell\s*\{[^}]*grid-row:\s*4/s);
-  assert.match(css, /\.analysis-nav\.collapsed \.analysis-menu/);
-  assert.match(css, /\.analysis-nav\.collapsed \.analysis-menu\s*\{[^}]*visibility:\s*hidden/s);
-  assert.match(css, /\.analysis-nav:not\(\.collapsed\) \.analysis-chevron/);
+  assert.match(css, /\.project-source-group/);
+  assert.match(css, /\.settings-popover/);
+  assert.match(css, /\.project-file-tree/);
+  assert.match(css, /\.composer-model/);
   assert.doesNotMatch(css, /\.alert-stack:empty\s*\{[^}]*display:\s*none/s);
 });
 
 
-test('project analysis navigation defaults closed and toggles locally', async () => {
+test('project analysis entry points live inside project overview', async () => {
   const appSource = await readFile(new URL('./js/app.js', import.meta.url), 'utf8');
+  const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
 
-  assert.match(appSource, /function setAnalysisExpanded\(expanded\)/);
-  assert.match(appSource, /setAnalysisExpanded\(false\)/);
-  assert.match(appSource, /analysis-toggle[\s\S]*setAnalysisExpanded/);
+  assert.doesNotMatch(appSource, /setAnalysisExpanded/);
+  assert.match(appSource, /button\[data-view\]/);
+  assert.match(html, /class="[^"]*overview-analysis/);
+});
+
+
+test('project overview has useful initial content before asynchronous project loading finishes', async () => {
+  const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
+
+  assert.match(html, /id="project-stats"[\s\S]*当前项目[\s\S]*未选择/);
+  assert.match(html, /id="project-introduction"[\s\S]*选择一个项目/);
+  assert.match(html, /id="project-files"[\s\S]*还没有项目文件/);
+});
+
+test('project selector is populated before slower project files and routes finish loading', async () => {
+  const source = await readFile(new URL('./js/projects.js', import.meta.url), 'utf8');
+  const loadProjects = source.match(/async function loadProjects\([\s\S]*?\n}/)?.[0] || '';
+
+  const renderIndex = loadProjects.indexOf('renderProjectSelector()');
+  const detailsIndex = loadProjects.indexOf('await loadFiles()');
+  assert.ok(renderIndex >= 0, 'loadProjects should render the selector directly');
+  assert.ok(detailsIndex >= 0, 'loadProjects should continue loading project details');
+  assert.ok(renderIndex < detailsIndex, 'selector must render before project details are awaited');
 });
 
 
@@ -116,6 +251,31 @@ test('mobile architecture keeps a readable canvas inside its scroll container', 
   assert.match(artifactsSource, /artifact-\$\{view\.dataset\.artifactType\}/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.artifact-diagram\.artifact-architecture[\s\S]*min-width:\s*520px/);
   assert.match(css, /\.artifact-diagram\.artifact-architecture svg[\s\S]*max-width:\s*100%/);
+});
+
+
+test('all project analysis views keep their header fixed and scroll only the content panel', async () => {
+  const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  for (const id of ['architecture', 'flow', 'sequence', 'project-api']) {
+    assert.match(html, new RegExp(`id="view-${id}"[\\s\\S]*?<header class="page-header"[\\s\\S]*?class="artifact-content`));
+  }
+  assert.match(css, /\.artifact-view\.active\s*\{[^}]*display:\s*grid[^}]*grid-template-rows:\s*auto\s+auto\s+minmax\(0,\s*1fr\)[^}]*overflow:\s*hidden/s);
+  assert.match(css, /\.artifact-view\s*>\s*\.page-header\s*\{[^}]*flex:\s*0\s+0\s+auto/s);
+  assert.match(css, /\.artifact-view\s*>\s*\.artifact-content\s*\{[^}]*min-height:\s*0[^}]*overflow:\s*auto/s);
+});
+
+
+test('folder and file glyphs keep their original shapes with slightly stronger contrast', async () => {
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.match(css, /\.folder-glyph\s*\{[^}]*color:\s*color-mix\([^;]*72%/s);
+  assert.match(css, /\.project-history-toggle \.folder-glyph::after\s*\{[^}]*opacity:\s*0/s);
+  assert.match(css, /\.project-history-group:not\(\.collapsed\)[^\{]*\.folder-glyph::after\s*\{[^}]*opacity:\s*1/s);
+  assert.doesNotMatch(css, /\.file-tree-folder\s*>\s*summary\s+\.folder-glyph::after/);
+  assert.match(css, /\.file-glyph\s*\{[^}]*color:\s*color-mix\([^;]*68%/s);
+  assert.match(css, /\.file-glyph::after\s*\{[^}]*background:\s*color-mix/s);
 });
 
 
@@ -172,14 +332,56 @@ test('project operation alerts replace stale messages and expose scan progress',
 });
 
 
-test('project analysis and workspace share one project state module', async () => {
+test('project overview owns analysis selection independently from opening conversations', async () => {
   const appSource = await readFile(new URL('./js/app.js', import.meta.url), 'utf8');
   const artifactsSource = await readFile(new URL('./js/artifacts.js', import.meta.url), 'utf8');
   const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
+  const projectsSource = await readFile(new URL('./js/projects.js', import.meta.url), 'utf8');
   const projectImport = source => source.match(/from ['"](\.\/projects\.js\?v=[^'"]+)['"]/)?.[1];
 
   assert.equal(projectImport(artifactsSource), projectImport(appSource));
   assert.equal(projectImport(chatSource), projectImport(appSource));
+  assert.match(projectsSource, /overview-project-selector/);
+  assert.doesNotMatch(chatSource, /project:context-changed/);
+  assert.doesNotMatch(artifactsSource, /project:context-changed/);
+});
+
+
+test('daily conversations never inherit the project selected in overview', async () => {
+  const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
+  const contextFunction = chatSource.match(/function conversationContextProjectId\(\)[\s\S]*?\n}/)?.[0] || '';
+  const createFunction = chatSource.match(/async function createConversation\([^\n]+\)[\s\S]*?\n}/)?.[0] || '';
+
+  assert.match(contextFunction, /normalizeProjectId\(activeConversation\(\)\)/);
+  assert.doesNotMatch(contextFunction, /activeProjectId/);
+  assert.match(createFunction, /projectId\s*=\s*null/);
+  assert.doesNotMatch(createFunction, /projectId\s*=\s*activeProjectId\(\)/);
+});
+
+
+test('project connection fields suppress hints and browser autofill', async () => {
+  const appSource = await readFile(new URL('./js/app.js', import.meta.url), 'utf8');
+  const projectsSource = await readFile(new URL('./js/projects.js', import.meta.url), 'utf8');
+
+  assert.match(appSource, /input\.autocomplete\s*=\s*field\.autocomplete\s*\|\|\s*'off'/);
+  assert.doesNotMatch(projectsSource, /留空时使用目录或仓库名称/);
+  assert.doesNotMatch(projectsSource, /https:\/\/github\.com\/owner\/repository/);
+  assert.doesNotMatch(projectsSource, /https:\/\/gitee\.com\/owner\/repository/);
+});
+
+
+test('knowledge categories are fixed choices and project files use a separate panel', async () => {
+  const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
+  const documentsSource = await readFile(new URL('./js/documents.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.match(documentsSource, /KNOWLEDGE_CATEGORIES/);
+  for (const category of ['general', 'backend', 'frontend', 'fullstack', 'architecture', 'devops', 'testing']) {
+    assert.match(documentsSource, new RegExp(`['"]${category}['"]`));
+  }
+  assert.match(documentsSource, /name:\s*['"]category['"][^\n]*type:\s*['"]select['"]/);
+  assert.match(html, /class="[^"]*project-files-panel[^"]*"[\s\S]*?<h2>项目文件<\/h2>/);
+  assert.match(css, /\.project-files-panel\s*\{/);
 });
 
 
@@ -207,18 +409,22 @@ test('selecting a recent conversation requests the chat view', async () => {
 });
 
 
-test('recent conversations render generic items and collapsible project groups', async () => {
+test('recent conversations render source, project, and daily collapsible groups', async () => {
   const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
   const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
 
-  assert.match(chatSource, /import \{ groupConversations \}/);
+  assert.match(chatSource, /groupWorkspaceConversations/);
+  assert.match(chatSource, /expandedSourceTypes/);
   assert.match(chatSource, /expandedProjectIds/);
+  assert.match(chatSource, /project-source-group/);
   assert.match(chatSource, /project-history-group/);
-  assert.match(chatSource, /project-history-toggle/);
+  assert.match(chatSource, /daily-history-group/);
+  assert.match(chatSource, /日常对话/);
   assert.match(chatSource, /aria-expanded/);
   assert.match(chatSource, /api\.conversations\(\)/);
+  assert.match(css, /\.project-source-group\.collapsed \.project-source-panel/);
   assert.match(css, /\.project-history-group\.collapsed \.project-conversation-panel/);
-  assert.match(css, /\.project-history-chevron/);
+  assert.match(css, /\.daily-history-group\.collapsed \.daily-conversation-panel/);
 });
 
 
@@ -228,7 +434,7 @@ test('workspace selection and deletion remain inside the matching conversation g
   assert.match(chatSource, /preferredProjectId/);
   assert.match(chatSource, /normalizeProjectId/);
   assert.match(chatSource, /fallbackProjectId/);
-  assert.match(chatSource, /project:changed[\s\S]*preferredProjectId/);
+  assert.doesNotMatch(chatSource, /ui\.on\('project:changed'/);
 });
 
 

@@ -102,7 +102,7 @@ class ChatUseCase:
         try:
             yield {"event": "stage", "data": {"stage": "retrieving"}}
             context, warnings = await self._stream_context(
-                message, conversation.project_id or project_id
+                message, conversation.project_id
             )
             prompt = _stream_prompt(message, context)
             yield {"event": "stage", "data": {"stage": "generating"}}
@@ -205,7 +205,7 @@ class ChatUseCase:
         )
         try:
             context, warnings = await self._stream_context(
-                message, conversation.project_id or project_id
+                message, conversation.project_id
             )
             prompt = _stream_prompt(message, context)
             results = await self.model_gateway.compare(

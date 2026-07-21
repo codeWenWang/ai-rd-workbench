@@ -13,6 +13,24 @@ from app.infrastructure.retrieval.project import project_namespace
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
+def _choose_directory() -> str:
+    """Open the native folder picker for the local-only desktop workflow."""
+    from tkinter import Tk, filedialog
+
+    root = Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        return filedialog.askdirectory(title="选择要连接的项目文件夹") or ""
+    finally:
+        root.destroy()
+
+
+@router.post("/select-directory")
+async def select_directory():
+    return {"path": await asyncio.to_thread(_choose_directory)}
+
+
 class ProjectCreate(BaseModel):
     name: str = Field(default="", max_length=300)
     source_type: Literal["local", "github", "gitee"] = "local"
@@ -69,7 +87,12 @@ async def scan_project(project_id: str, container: AppContainer = Depends(get_co
     summary = await asyncio.to_thread(container.project_analysis_use_case.scan, project_id)
     indexed_chunks = 0
     try:
-        indexed_chunks = await container.project_indexer.index(project_id)
+        indexed_chunks = await asyncio.wait_for(
+            container.project_indexer.index(project_id),
+            timeout=container.settings.project_index_timeout_seconds,
+        )
+    except TimeoutError:
+        warnings.append("project_semantic_index_timeout")
     except Exception:
         warnings.append("project_semantic_index_unavailable")
     return {
@@ -99,7 +122,35 @@ def list_project_files(project_id: str, container: AppContainer = Depends(get_co
     }
 
 
+@router.get("/{project_id}/files/{file_id}")
+def get_project_file(project_id: str, file_id: str, container: AppContainer = Depends(get_container)):
+    item = next(
+        (file for file in container.project_analysis.list_files(project_id) if file.id == file_id),
+        None,
+    )
+    if not item:
+        raise ResourceNotFound("project file not found")
+    return {
+        "id": item.id,
+        "project_id": item.project_id,
+        "relative_path": item.relative_path,
+        "language": item.language,
+        "content": item.content,
+        "size_bytes": item.size_bytes,
+    }
+
+
 @router.get("/{project_id}/routes")
 def list_project_routes(project_id: str, container: AppContainer = Depends(get_container)):
     items = container.project_analysis.list_routes(project_id)
-    return {"items": [serialize(item) for item in items], "total": len(items)}
+    files = {
+        item.id: item.relative_path
+        for item in container.project_analysis.list_files(project_id)
+    }
+    return {
+        "items": [
+            {**serialize(item), "source_path": files.get(item.project_file_id, "")}
+            for item in items
+        ],
+        "total": len(items),
+    }

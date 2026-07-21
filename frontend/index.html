@@ -12,7 +12,7 @@
       document.documentElement.dataset.theme = saved || preferred;
     })();
   </script>
-  <link rel="stylesheet" href="css/style.css?v=20260716.3">
+  <link rel="stylesheet" href="css/style.css?v=20260721.8">
 </head>
 <body>
   <div class="app-shell" id="app-shell">
@@ -31,44 +31,39 @@
         <button class="icon-btn sidebar-collapse" id="sidebar-collapse" title="收起侧边栏" aria-label="收起侧边栏" aria-expanded="true">‹</button>
       </div>
 
-      <div class="project-switcher">
-        <label class="sr-only" for="project-selector">当前项目</label>
-        <select id="project-selector" title="切换当前项目"><option value="">通用工作区</option></select>
-        <button id="add-project" class="icon-btn" title="连接本地项目" aria-label="连接本地项目">＋</button>
-      </div>
-
-      <button id="new-conversation" class="sidebar-command" title="新建对话">
+      <button id="new-conversation" class="sidebar-command" title="新建日常对话">
         <span class="nav-icon" aria-hidden="true">＋</span><span class="sidebar-label">新建对话</span>
       </button>
 
-      <nav class="primary-nav" aria-label="主导航">
-        <button class="nav-item active" data-view="chat" aria-current="page" title="项目问答"><span class="nav-icon" aria-hidden="true">◇</span><span class="sidebar-label">项目问答</span></button>
-        <button class="nav-item" data-view="overview" title="项目总览"><span class="nav-icon" aria-hidden="true">▦</span><span class="sidebar-label">项目总览</span></button>
-        <div class="analysis-nav collapsed" id="analysis-nav">
-          <button id="analysis-toggle" class="nav-item analysis-toggle" type="button" aria-expanded="false" aria-controls="analysis-menu" title="展开项目分析">
-            <span class="nav-icon" aria-hidden="true">⌘</span><span class="sidebar-label">项目分析</span><span class="analysis-chevron" aria-hidden="true">›</span>
-          </button>
-          <div id="analysis-menu" class="analysis-menu" aria-hidden="true" inert>
-            <button class="nav-item" data-view="architecture" title="架构图"><span class="nav-icon" aria-hidden="true">⌘</span><span class="sidebar-label">架构图</span></button>
-            <button class="nav-item" data-view="flow" title="流程图"><span class="nav-icon" aria-hidden="true">⇢</span><span class="sidebar-label">流程图</span></button>
-            <button class="nav-item" data-view="sequence" title="时序图"><span class="nav-icon" aria-hidden="true">⇅</span><span class="sidebar-label">时序图</span></button>
-            <button class="nav-item" data-view="project-api" title="项目接口文档"><span class="nav-icon" aria-hidden="true">{ }</span><span class="sidebar-label">接口文档</span></button>
-          </div>
-        </div>
-        <button class="nav-item" data-view="knowledge" title="知识库"><span class="nav-icon" aria-hidden="true">▤</span><span class="sidebar-label">知识库</span></button>
-        <button class="nav-item" data-view="memories" title="个人记忆"><span class="nav-icon" aria-hidden="true">◎</span><span class="sidebar-label">个人记忆</span><span id="pending-count" class="count-badge hidden">0</span></button>
-      </nav>
+      <div class="sidebar-scroll">
+        <nav class="primary-nav" aria-label="主导航">
+          <button class="nav-item" data-view="overview" title="项目总览"><span class="nav-icon" aria-hidden="true">▦</span><span class="sidebar-label">项目总览</span></button>
+          <button class="nav-item" data-view="knowledge" title="知识库"><span class="nav-icon" aria-hidden="true">▤</span><span class="sidebar-label">知识库</span></button>
+          <button class="nav-item" data-view="memories" title="个人记忆"><span class="nav-icon" aria-hidden="true">◎</span><span class="sidebar-label">个人记忆</span><span id="pending-count" class="count-badge hidden">0</span></button>
+        </nav>
 
-      <section class="history-section" aria-labelledby="history-title">
-        <div class="history-heading"><span id="history-title">最近对话</span></div>
-        <div id="conversation-error" class="inline-alert error hidden" role="alert"></div>
-        <div id="conversation-list" class="conversation-list" aria-label="对话历史"></div>
-      </section>
+        <section class="history-section" id="sidebar-projects" aria-labelledby="history-title">
+          <div class="history-heading">
+            <button id="project-root-toggle" class="project-root-toggle" type="button" aria-expanded="true"><strong id="history-title">项目</strong><span class="root-chevron" aria-hidden="true"></span></button>
+            <button id="add-project" class="heading-action" title="添加项目" aria-label="添加项目">＋</button>
+          </div>
+          <div id="conversation-error" class="inline-alert error hidden" role="alert"></div>
+          <div id="conversation-list" class="conversation-list" aria-label="项目和日常对话">
+            <div id="project-source-list" class="project-source-list"></div>
+            <div id="daily-conversation-root" class="daily-conversation-root"></div>
+          </div>
+        </section>
+      </div>
 
       <footer class="sidebar-footer">
-        <button id="model-settings" class="sidebar-footer-button" title="模型设置"><span class="nav-icon" aria-hidden="true">⚙</span><span class="sidebar-label">模型设置</span></button>
-        <button id="theme-toggle" class="sidebar-footer-button" title="切换明暗主题"><span class="nav-icon" aria-hidden="true">◐</span><span class="sidebar-label" id="theme-label">切换主题</span></button>
-        <button id="diagnostics-toggle" class="service-state" title="查看运行状态"><span class="status-dot" id="global-status-dot"></span><span class="sidebar-label" id="global-status">正在连接本地服务</span></button>
+        <details class="settings-menu" id="settings-menu">
+          <summary class="settings-summary" title="打开设置"><span class="nav-icon" aria-hidden="true">⚙</span><span class="sidebar-label">设置</span><span class="status-dot" id="global-status-dot" aria-hidden="true"></span></summary>
+          <div class="settings-popover">
+            <button id="model-settings" class="sidebar-footer-button" title="模型设置"><span class="nav-icon" aria-hidden="true">◈</span><span>模型设置</span></button>
+            <button id="theme-toggle" class="sidebar-footer-button" title="切换明暗主题"><span class="nav-icon" aria-hidden="true">◐</span><span id="theme-label">切换主题</span></button>
+            <button id="diagnostics-toggle" class="service-state" title="查看运行状态"><span class="nav-icon" aria-hidden="true">◌</span><span id="global-status">正在连接本地服务</span></button>
+          </div>
+        </details>
       </footer>
     </aside>
     <div id="sidebar-backdrop" class="sidebar-backdrop hidden"></div>
@@ -84,7 +79,6 @@
           <header class="chat-header">
             <div><h1 id="active-conversation-title">新对话</h1><span id="chat-stage" class="stage-label">就绪</span></div>
             <div class="chat-model-controls">
-              <label><span class="sr-only">聊天模型</span><select id="chat-model"><option value="">默认模型</option></select></label>
               <label class="compare-toggle"><input id="compare-models" type="checkbox"><span>模型对比</span></label>
               <label><span class="sr-only">对比模型</span><select id="compare-model" class="hidden"><option value="">选择对比模型</option></select></label>
             </div>
@@ -97,6 +91,7 @@
             <form id="chat-form" class="composer">
               <label class="sr-only" for="chat-input">输入问题</label>
               <textarea id="chat-input" rows="1" maxlength="4000" placeholder="输入消息" required></textarea>
+              <label class="composer-model" title="切换当前模型"><span class="sr-only">当前模型</span><select id="chat-model"><option value="">默认模型</option></select></label>
               <button id="send-message" class="send-btn" type="submit" title="发送" aria-label="发送消息">↑</button>
             </form>
           </div>
@@ -104,29 +99,44 @@
       </section>
 
       <section class="view content-view" id="view-overview" aria-labelledby="overview-title">
-        <header class="page-header"><div><h1 id="overview-title">项目总览</h1><p id="overview-subtitle">连接本地项目后开始只读分析</p></div><div class="header-actions"><button id="remove-project" class="button danger">移除项目</button><button id="scan-project" class="button primary">↻ 扫描项目</button></div></header>
+        <header class="page-header overview-header"><div><h1 id="overview-title">项目总览</h1><p id="overview-subtitle">连接本地项目后开始只读分析</p></div><div class="header-actions"><label class="overview-project-picker"><span>当前项目</span><select id="overview-project-selector"><option value="">选择已添加的项目</option></select></label><button id="remove-project" class="button danger">移除项目</button><button id="scan-project" class="button primary">↻ 扫描项目</button></div></header>
         <div id="project-alert" class="alert-stack" role="status"></div>
-        <div id="project-stats" class="stats-grid project-stats"></div>
-        <section class="diagnostic-section"><h2>项目文件</h2><div id="project-files" class="item-list"></div></section>
+        <div id="project-stats" class="stats-grid project-stats">
+          <div class="stat"><span>当前项目</span><strong>未选择</strong></div>
+          <div class="stat"><span>源码权限</span><strong>严格只读</strong></div>
+          <div class="stat"><span>项目分析</span><strong>等待连接</strong></div>
+          <div class="stat"><span>远程仓库</span><strong>GitHub / Gitee</strong></div>
+        </div>
+        <section id="project-introduction" class="project-introduction"><div class="empty-state"><strong>选择一个项目</strong><span>选择已添加的项目后，这里会展示它的用途、主要能力和源码阅读路线。</span></div></section>
+        <section class="overview-analysis overview-panel diagnostic-section">
+          <div class="section-heading"><div><h2>项目分析</h2><p>从不同视角查看当前项目的结构与调用关系</p></div></div>
+          <div class="overview-analysis-actions">
+            <button class="analysis-entry" data-view="architecture" disabled><span aria-hidden="true">⌘</span><strong>架构图</strong><small>模块职责与依赖</small></button>
+            <button class="analysis-entry" data-view="flow" disabled><span aria-hidden="true">⇢</span><strong>流程图</strong><small>入口到核心逻辑</small></button>
+            <button class="analysis-entry" data-view="sequence" disabled><span aria-hidden="true">⇅</span><strong>时序图</strong><small>组件调用顺序</small></button>
+            <button class="analysis-entry" data-view="project-api" disabled><span aria-hidden="true">{ }</span><strong>接口文档</strong><small>请求、响应与源码</small></button>
+          </div>
+        </section>
+        <section class="overview-panel project-files-panel diagnostic-section"><div class="section-heading"><div><h2>项目文件</h2><p>按目录层级展开浏览已解析源码</p></div></div><div id="project-files" class="project-file-tree"><div class="empty-state"><strong>还没有项目文件</strong><span>选择项目并执行扫描。</span></div></div></section>
       </section>
 
       <section class="view content-view artifact-view" id="view-architecture" data-artifact-type="architecture">
-        <header class="page-header"><div><h1>架构图</h1><p>展示项目模块、职责与依赖关系</p></div><button class="button primary generate-artifact">生成架构图</button></header>
+        <header class="page-header"><div class="artifact-title"><button class="icon-btn artifact-back" data-view="overview" title="返回项目总览" aria-label="返回项目总览">←</button><div><h1>架构图</h1><p>展示项目模块、职责与依赖关系，并按客户端层、业务服务层和数据层组织</p></div></div><button class="button primary generate-artifact">生成架构图</button></header>
         <div class="artifact-alert inline-alert error hidden"></div><div class="artifact-content empty-state"><strong>尚未生成</strong><span>先扫描项目，再生成架构图。</span></div>
       </section>
 
       <section class="view content-view artifact-view" id="view-flow" data-artifact-type="flow">
-        <header class="page-header"><div><h1>流程图</h1><p>展示代表性入口到核心模块的主要路径</p></div><button class="button primary generate-artifact">生成流程图</button></header>
+        <header class="page-header"><div class="artifact-title"><button class="icon-btn artifact-back" data-view="overview" title="返回项目总览" aria-label="返回项目总览">←</button><div><h1>流程图</h1><p>展示代表性入口到核心模块的主要路径</p></div></div><button class="button primary generate-artifact">生成流程图</button></header>
         <div class="artifact-alert inline-alert error hidden"></div><div class="artifact-content empty-state"><strong>尚未生成</strong><span>先扫描项目，再生成流程图。</span></div>
       </section>
 
       <section class="view content-view artifact-view" id="view-sequence" data-artifact-type="sequence">
-        <header class="page-header"><div><h1>时序图</h1><p>展示代表性场景中的组件调用顺序</p></div><button class="button primary generate-artifact">生成时序图</button></header>
+        <header class="page-header"><div class="artifact-title"><button class="icon-btn artifact-back" data-view="overview" title="返回项目总览" aria-label="返回项目总览">←</button><div><h1>时序图</h1><p>展示代表性场景中的组件调用顺序，并区分整体链路与功能场景</p></div></div><button class="button primary generate-artifact">生成时序图</button></header>
         <div class="artifact-alert inline-alert error hidden"></div><div class="artifact-content empty-state"><strong>尚未生成</strong><span>先扫描项目，再生成时序图。</span></div>
       </section>
 
       <section class="view content-view artifact-view" id="view-project-api" data-artifact-type="api_docs">
-        <header class="page-header"><div><h1>项目接口文档</h1><p>来自静态分析的已识别接口与源码位置</p></div><button class="button primary generate-artifact">生成接口文档</button></header>
+        <header class="page-header"><div class="artifact-title"><button class="icon-btn artifact-back" data-view="overview" title="返回项目总览" aria-label="返回项目总览">←</button><div><h1>项目接口文档</h1><p>来自静态分析的已识别接口，规范展示 GET、POST、PUT、DELETE 请求、样例与响应格式</p></div></div><button class="button primary generate-artifact">生成接口文档</button></header>
         <div class="artifact-alert inline-alert error hidden"></div><div class="artifact-content empty-state"><strong>尚未生成</strong><span>先扫描项目，再生成接口文档。</span></div>
       </section>
 
@@ -188,6 +198,6 @@
 
   <template id="loading-row-template"><tr><td colspan="6"><div class="loading-line">正在加载…</div></td></tr></template>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-  <script type="module" src="js/app.js?v=20260716.2"></script>
+  <script type="module" src="js/app.js?v=20260721.7"></script>
 </body>
 </html>

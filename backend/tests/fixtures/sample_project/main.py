@@ -1,9 +1,5 @@
-from fastapi import FastAPI
+"""Compatibility marker retained for the platform end-to-end fixture."""
 
 
-app = FastAPI()
-
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+def demo_project_name():
+    return "research-task-management"

@@ -1,6 +1,6 @@
-import { api, errorText, listFrom, streamChat } from './api.js?v=20260714.3';
-import { groupConversations } from './conversation-groups.js?v=20260714.4';
-import { activeProjectId, projectById } from './projects.js?v=20260715.2';
+import { api, errorText, listFrom, streamChat } from './api.js?v=20260721.7';
+import { groupWorkspaceConversations } from './conversation-groups.js?v=20260721.1';
+import { activeProjectId, allProjects } from './projects.js?v=20260721.7';
 import { comparisonModelIds, selectedModelId } from './models.js?v=20260714.3';
 
 const stageNames = {
@@ -16,6 +16,9 @@ const state = {
   sending: false,
 };
 const expandedProjectIds = new Set();
+const expandedSourceTypes = new Set();
+let dailyExpanded = true;
+let projectRootExpanded = localStorage.getItem('sidebar_projects_expanded') !== 'false';
 let ui;
 
 const el = id => document.getElementById(id);
@@ -78,32 +81,36 @@ function setProjectGroupExpanded(group, panel, toggle, expanded) {
 
 function projectHistoryGroup(groupData) {
   const group = document.createElement('section');
-  group.className = 'project-history-group';
+  group.className = `project-history-group${groupData.projectId === activeProjectId() ? ' selected' : ''}`;
   group.dataset.projectId = groupData.projectId;
 
+  const header = document.createElement('div');
+  header.className = 'project-history-header';
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'project-history-toggle';
-  const label = document.createElement('strong');
-  label.textContent = groupData.name;
-  const count = document.createElement('span');
-  count.className = 'project-history-count';
-  count.textContent = String(groupData.conversations.length);
-  const chevron = document.createElement('span');
-  chevron.className = 'project-history-chevron';
-  chevron.setAttribute('aria-hidden', 'true');
-  chevron.textContent = '›';
-  toggle.append(label, count, chevron);
+  toggle.title = `展开或收起${groupData.name}对话`;
+  toggle.setAttribute('aria-label', `展开或收起${groupData.name}对话`);
+  toggle.innerHTML = `<span class="folder-glyph" aria-hidden="true"></span><strong>${ui.escape(groupData.name)}</strong>`;
+  const create = document.createElement('button');
+  create.type = 'button';
+  create.className = 'icon-btn history-create-button';
+  create.title = `在${groupData.name}中新建对话`;
+  create.setAttribute('aria-label', `在${groupData.name}中新建对话`);
+  create.textContent = '＋';
+  create.addEventListener('click', () => createConversation(groupData.projectId, create));
+  header.append(toggle, create);
 
   const panel = document.createElement('div');
   panel.className = 'project-conversation-panel';
   const inner = document.createElement('div');
   inner.className = 'project-conversation-inner';
-  groupData.conversations.forEach(item => inner.append(conversationRow(item)));
+  if (groupData.conversations.length) groupData.conversations.forEach(item => inner.append(conversationRow(item)));
+  else inner.innerHTML = '<div class="history-empty nested">尚无对话</div>';
   panel.append(inner);
-  group.append(toggle, panel);
+  group.append(header, panel);
 
-  const expanded = expandedProjectIds.has(groupData.projectId);
+  const expanded = expandedProjectIds.has(groupData.projectId) || normalizeProjectId(activeConversation()) === groupData.projectId;
   setProjectGroupExpanded(group, panel, toggle, expanded);
   toggle.addEventListener('click', () => {
     setProjectGroupExpanded(group, panel, toggle, toggle.getAttribute('aria-expanded') !== 'true');
@@ -111,27 +118,100 @@ function projectHistoryGroup(groupData) {
   return group;
 }
 
-function renderConversations() {
-  const container = el('conversation-list');
-  container.innerHTML = '';
-  if (!state.conversations.length) {
-    container.innerHTML = '<div class="history-empty">还没有对话</div>';
-    syncActiveTitle();
-    return;
-  }
+function setSourceExpanded(group, panel, toggle, sourceType, expanded) {
+  group.classList.toggle('collapsed', !expanded);
+  toggle.setAttribute('aria-expanded', String(expanded));
+  panel.setAttribute('aria-hidden', String(!expanded));
+  panel.inert = !expanded;
+  if (expanded) expandedSourceTypes.add(sourceType); else expandedSourceTypes.delete(sourceType);
+}
 
+function projectSourceGroup(source) {
+  const group = document.createElement('section');
+  group.className = 'project-source-group';
+  group.dataset.sourceType = source.key;
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'project-source-toggle';
+  toggle.innerHTML = `<strong>${ui.escape(source.label)}</strong><span class="source-chevron" aria-hidden="true">›</span><span>${source.projects.length}</span>`;
+  const panel = document.createElement('div');
+  panel.className = 'project-source-panel';
+  const inner = document.createElement('div');
+  inner.className = 'project-source-inner';
+  if (source.projects.length) source.projects.forEach(project => inner.append(projectHistoryGroup(project)));
+  else inner.innerHTML = '<div class="history-empty nested">暂无项目</div>';
+  panel.append(inner);
+  group.append(toggle, panel);
+  const activeSource = source.projects.some(project => project.projectId === activeProjectId());
+  const expanded = expandedSourceTypes.has(source.key) || activeSource;
+  setSourceExpanded(group, panel, toggle, source.key, expanded);
+  toggle.addEventListener('click', () => {
+    setSourceExpanded(group, panel, toggle, source.key, toggle.getAttribute('aria-expanded') !== 'true');
+  });
+  return group;
+}
+
+function dailyHistoryGroup(conversations) {
+  const group = document.createElement('section');
+  group.className = 'daily-history-group';
+  const header = document.createElement('div');
+  header.className = 'daily-history-header';
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'daily-history-toggle';
+  toggle.innerHTML = `<strong>日常对话</strong><span class="daily-chevron" aria-hidden="true">›</span><span>${conversations.length}</span>`;
+  const create = document.createElement('button');
+  create.type = 'button';
+  create.className = 'icon-btn history-create-button';
+  create.title = '新建日常对话';
+  create.setAttribute('aria-label', '新建日常对话');
+  create.textContent = '＋';
+  create.addEventListener('click', () => createConversation('', create));
+  header.append(toggle, create);
+  const panel = document.createElement('div');
+  panel.className = 'daily-conversation-panel';
+  const inner = document.createElement('div');
+  inner.className = 'daily-conversation-inner';
+  if (conversations.length) conversations.forEach(item => inner.append(conversationRow(item)));
+  else inner.innerHTML = '<div class="history-empty nested">还没有日常对话</div>';
+  panel.append(inner);
+  group.append(header, panel);
+  const setExpanded = expanded => {
+    dailyExpanded = expanded;
+    group.classList.toggle('collapsed', !expanded);
+    toggle.setAttribute('aria-expanded', String(expanded));
+    panel.setAttribute('aria-hidden', String(!expanded));
+    panel.inert = !expanded;
+  };
+  setExpanded(dailyExpanded);
+  toggle.addEventListener('click', () => setExpanded(toggle.getAttribute('aria-expanded') !== 'true'));
+  return group;
+}
+
+function renderConversations() {
+  const projectContainer = el('project-source-list');
+  const dailyContainer = el('daily-conversation-root');
+  projectContainer.replaceChildren();
+  dailyContainer.replaceChildren();
   const activeProject = normalizeProjectId(activeConversation());
-  if (activeProject) expandedProjectIds.add(activeProject);
-  const grouped = groupConversations(state.conversations, projectId => projectById(projectId)?.name);
-  grouped.projects.forEach(group => container.append(projectHistoryGroup(group)));
-  if (grouped.general.length) {
-    const label = document.createElement('div');
-    label.className = 'conversation-group-label';
-    label.textContent = '通用对话';
-    container.append(label);
-    grouped.general.forEach(item => container.append(conversationRow(item)));
+  if (activeProject) {
+    expandedProjectIds.add(activeProject);
+    const source = allProjects().find(project => String(project.id) === activeProject)?.source_type || 'local';
+    expandedSourceTypes.add(source);
   }
+  const grouped = groupWorkspaceConversations(state.conversations, allProjects());
+  grouped.sources.forEach(source => projectContainer.append(projectSourceGroup(source)));
+  dailyContainer.append(dailyHistoryGroup(grouped.daily));
   syncActiveTitle();
+}
+
+function setProjectRootExpanded(expanded) {
+  projectRootExpanded = expanded;
+  const section = el('sidebar-projects');
+  const toggle = el('project-root-toggle');
+  section.classList.toggle('projects-collapsed', !expanded);
+  toggle.setAttribute('aria-expanded', String(expanded));
+  localStorage.setItem('sidebar_projects_expanded', String(expanded));
 }
 
 function normalizeCitation(citation, index) {
@@ -208,7 +288,7 @@ function comparisonTurnNode(message) {
     cardHeader.append(name, latency);
     const answer = document.createElement('div');
     answer.className = 'comparison-answer';
-    answer.textContent = item.answer || item.error || '没有返回内容';
+    answer.innerHTML = ui.renderMarkdown(item.answer || item.error || '没有返回内容');
     card.append(cardHeader, answer);
     grid.append(card);
   }
@@ -230,7 +310,9 @@ function messageNode(message) {
   } else {
     const body = document.createElement('div');
     body.className = 'message-body';
-    body.textContent = message.content || (message.status === 'pending' ? '正在思考…' : '');
+    const text = message.content || (message.status === 'pending' ? '正在思考…' : '');
+    if (message.role === 'assistant') body.innerHTML = ui.renderMarkdown(text);
+    else body.textContent = text;
     content.append(body);
   }
 
@@ -336,7 +418,10 @@ async function loadMessages() {
 async function selectConversation(id) {
   if (state.sending) return;
   ui.showView('chat');
-  if (id === state.activeId) return;
+  if (id === state.activeId) {
+    renderConversations();
+    return;
+  }
   state.activeId = id;
   localStorage.setItem('conversation_id', id);
   renderConversations();
@@ -344,15 +429,14 @@ async function selectConversation(id) {
 }
 
 function conversationContextProjectId() {
-  return normalizeProjectId(activeConversation()) || normalizeProjectId(activeProjectId()) || null;
+  return normalizeProjectId(activeConversation()) || null;
 }
 
-async function createConversation() {
+async function createConversation(projectId = null, trigger = el('new-conversation')) {
   ui.showView('chat');
-  const button = el('new-conversation');
-  ui.busy(button, true);
+  ui.busy(trigger, true);
   try {
-    const payload = await api.createConversation(activeProjectId());
+    const payload = await api.createConversation(projectId || null);
     state.activeId = value(payload, 'conversation_id', 'session_id', 'id');
     if (!state.activeId) throw new Error('创建会话响应中缺少 ID');
     localStorage.setItem('conversation_id', state.activeId);
@@ -364,7 +448,7 @@ async function createConversation() {
   } catch (error) {
     ui.alert('chat-alerts', errorText(error), 'error');
   } finally {
-    ui.busy(button, false);
+    ui.busy(trigger, false);
   }
 }
 
@@ -580,14 +664,11 @@ export async function initChat(sharedUi) {
       el('chat-form').requestSubmit();
     }
   });
-  el('new-conversation').addEventListener('click', createConversation);
-  ui.on('project:changed', async ({ projectId } = {}) => {
-    if (state.sending) return;
-    state.activeId = '';
-    state.messages = [];
-    localStorage.removeItem('conversation_id');
-    renderMessages();
-    await loadConversations({ preferredProjectId: projectId || '' });
+  el('new-conversation').addEventListener('click', () => createConversation('', el('new-conversation')));
+  setProjectRootExpanded(projectRootExpanded);
+  el('project-root-toggle').addEventListener('click', () => {
+    setProjectRootExpanded(el('project-root-toggle').getAttribute('aria-expanded') !== 'true');
   });
+  ui.on('projects:changed', () => renderConversations());
   await loadConversations();
 }

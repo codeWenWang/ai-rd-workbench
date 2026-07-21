@@ -9,7 +9,7 @@ const { chromium } = require('playwright');
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('http://127.0.0.1:8000/?e2e=20260714', { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('#project-selector');
+  await page.waitForSelector('#conversation-list');
   assert.equal(await page.locator('a[href="/docs"]').count(), 0);
 
   const rootPath = path.resolve(__dirname, '..', 'backend', 'tests', 'fixtures', 'sample_project');
@@ -24,8 +24,8 @@ const { chromium } = require('playwright');
     }, { name: '端到端示例项目', root_path: rootPath });
   }
 
+  await page.evaluate(id => localStorage.setItem('active_project_id', id), project.id);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.selectOption('#project-selector', project.id);
   await page.click('[data-view="overview"]');
   await page.click('#scan-project');
   await page.waitForFunction(() => !document.querySelector('#scan-project').disabled);
@@ -44,9 +44,10 @@ const { chromium } = require('playwright');
   await page.waitForSelector('#view-architecture.active .artifact-content');
   await page.screenshot({ path: path.resolve(__dirname, 'e2e-architecture.png'), fullPage: true });
 
+  await page.locator('#settings-menu summary').click();
   await page.click('#model-settings');
-  assert.equal(await page.locator('#app-dialog[open]').count(), 1);
-  await page.locator('#app-dialog button[value="cancel"]').first().click();
+  assert.equal(await page.locator('#detail-drawer.open').count(), 1);
+  await page.click('#close-drawer');
   await page.click('#diagnostics-toggle');
   assert.equal(await page.locator('#view-diagnostics.active').count(), 1);
   await page.screenshot({ path: path.resolve(__dirname, 'e2e-desktop.png'), fullPage: true });

@@ -1,4 +1,4 @@
-import { api, errorText, listFrom } from './api.js?v=20260714.1';
+import { api, errorText, listFrom } from './api.js?v=20260721.7';
 
 let ui;
 let documents = [];
@@ -6,6 +6,15 @@ let searchTimer;
 const el = id => document.getElementById(id);
 const value = (obj, ...keys) => keys.map(key => obj?.[key]).find(item => item !== undefined && item !== null);
 const statusLabels = { pending: '等待中', indexing: '索引中', indexed: '已索引', failed: '失败', deleting: '删除中' };
+const KNOWLEDGE_CATEGORIES = [
+  'general', 'backend', 'frontend', 'fullstack', 'architecture', 'devops', 'testing',
+].map(category => [category, category]);
+
+function categoryOptions(current = '') {
+  const options = [...KNOWLEDGE_CATEGORIES];
+  if (current && !options.some(([value]) => value === current)) options.push([current, current]);
+  return options;
+}
 
 function showError(error) { const target = el('document-alert'); target.textContent = errorText(error); target.classList.remove('hidden'); }
 function clearError() { el('document-alert').classList.add('hidden'); }
@@ -27,7 +36,10 @@ function render() {
     });
     body.append(tr);
   }
-  const categories = [...new Set(documents.map(doc => value(doc, 'category')).filter(Boolean))].sort();
+  const categories = [...new Set([
+    ...KNOWLEDGE_CATEGORIES.map(([category]) => category),
+    ...documents.map(doc => value(doc, 'category')).filter(Boolean),
+  ])].sort();
   const select = el('document-category'); const current = select.value;
   select.innerHTML = '<option value="">全部分类</option>' + categories.map(item => `<option value="${ui.escape(item)}">${ui.escape(item)}</option>`).join('');
   select.value = current;
@@ -61,7 +73,7 @@ async function addDocument() {
     fields: [
       { name:'source_type', label:'录入方式', type:'select', options:[['text','文本'],['pdf','PDF 文件']], value:'text' },
       { name:'title', label:'文档标题', required:true, maxlength:200 },
-      { name:'category', label:'分类', value:'general', required:true, maxlength:80 },
+      { name:'category', label:'分类', type:'select', options:categoryOptions(), value:'general', required:true },
       { name:'content', label:'文档内容', type:'textarea', requiredWhen:{ source_type:'text' }, placeholder:'输入团队规范、技术文档或 FAQ' },
       { name:'file', label:'选择 PDF', type:'file', accept:'.pdf,application/pdf', requiredWhen:{ source_type:'pdf' } },
     ],
@@ -81,7 +93,7 @@ async function editDocument(doc) {
   const canEditText = value(detail,'source_type') !== 'pdf';
   const fields = [
     { name:'title', label:'文档标题', value:value(detail,'title','source_name') || '', required:true },
-    { name:'category', label:'分类', value:value(detail,'category') || 'general', required:true },
+    { name:'category', label:'分类', type:'select', options:categoryOptions(value(detail,'category')), value:value(detail,'category') || 'general', required:true },
   ];
   if (canEditText) fields.push({ name:'content', label:'文档内容', type:'textarea', value:value(detail,'content','text') || '' });
   const result = await ui.formDialog({ title:'编辑文档', submitText:'保存并更新', fields });

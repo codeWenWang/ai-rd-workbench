@@ -8,7 +8,7 @@ from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import delete, func, insert, or_, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.domain.entities import (
@@ -229,82 +229,94 @@ class SqliteProjectAnalysisRepository(RepositoryBase):
         with self.sessions.begin() as session:
             if not session.get(ProjectModel, project_id):
                 raise ResourceNotFound("project not found")
-            session.execute(delete(ProjectRouteModel).where(ProjectRouteModel.project_id == project_id))
-            session.execute(delete(ProjectSymbolModel).where(ProjectSymbolModel.project_id == project_id))
-            session.execute(delete(ProjectRelationModel).where(ProjectRelationModel.project_id == project_id))
-            old_chunk_ids = list(session.scalars(
-                select(ProjectChunkModel.id).where(ProjectChunkModel.project_id == project_id)
-            ))
-            for chunk_id in old_chunk_ids:
-                session.execute(
-                    text("DELETE FROM project_chunks_fts WHERE chunk_id=:id"),
-                    {"id": chunk_id},
-                )
-            session.execute(delete(ProjectChunkModel).where(ProjectChunkModel.project_id == project_id))
-            session.execute(delete(ProjectFileModel).where(ProjectFileModel.project_id == project_id))
+            connection = session.connection()
+            connection.execute(delete(ProjectRouteModel).where(ProjectRouteModel.project_id == project_id))
+            connection.execute(delete(ProjectSymbolModel).where(ProjectSymbolModel.project_id == project_id))
+            connection.execute(delete(ProjectRelationModel).where(ProjectRelationModel.project_id == project_id))
+            connection.execute(
+                text("DELETE FROM project_chunks_fts WHERE project_id=:project_id"),
+                {"project_id": project_id},
+            )
+            connection.execute(delete(ProjectChunkModel).where(ProjectChunkModel.project_id == project_id))
+            connection.execute(delete(ProjectFileModel).where(ProjectFileModel.project_id == project_id))
+            file_rows = []
+            symbol_rows = []
+            route_rows = []
+            relation_rows = []
+            chunk_rows = []
+            fts_rows = []
             for scanned, parsed in items:
                 file_id = _id()
-                session.add(ProjectFileModel(
-                    id=file_id,
-                    project_id=project_id,
-                    relative_path=scanned.relative_path,
-                    language=scanned.language,
-                    content_hash=scanned.content_hash,
-                    content=scanned.content,
-                    size_bytes=scanned.size_bytes,
-                    modified_ns=scanned.modified_ns,
-                ))
-                session.flush()
-                for symbol in parsed.symbols:
-                    session.add(ProjectSymbolModel(
-                        id=_id(), project_id=project_id, project_file_id=file_id,
-                        name=symbol.name, kind=symbol.kind, line_number=symbol.line_number,
-                        end_line_number=symbol.end_line_number,
-                    ))
-                for route in parsed.routes:
-                    session.add(ProjectRouteModel(
-                        id=_id(), project_id=project_id, project_file_id=file_id,
-                        method=route.method, path=route.path, handler=route.handler,
-                        line_number=route.line_number,
-                    ))
-                for target in parsed.imports:
-                    session.add(ProjectRelationModel(
-                        id=_id(), project_id=project_id, source_path=scanned.relative_path,
-                        target=target, kind="import", inferred=False,
-                    ))
-                for target in parsed.calls:
-                    session.add(ProjectRelationModel(
-                        id=_id(), project_id=project_id, source_path=scanned.relative_path,
-                        target=target, kind="call", inferred=True,
-                    ))
+                file_rows.append({
+                    "id": file_id,
+                    "project_id": project_id,
+                    "relative_path": scanned.relative_path,
+                    "language": scanned.language,
+                    "content_hash": scanned.content_hash,
+                    "content": scanned.content,
+                    "size_bytes": scanned.size_bytes,
+                    "modified_ns": scanned.modified_ns,
+                })
+                symbol_rows.extend({
+                    "id": _id(), "project_id": project_id, "project_file_id": file_id,
+                    "name": symbol.name, "kind": symbol.kind,
+                    "line_number": symbol.line_number,
+                    "end_line_number": symbol.end_line_number,
+                } for symbol in parsed.symbols)
+                route_rows.extend({
+                    "id": _id(), "project_id": project_id, "project_file_id": file_id,
+                    "method": route.method, "path": route.path,
+                    "handler": route.handler, "line_number": route.line_number,
+                } for route in parsed.routes)
+                relation_rows.extend({
+                    "id": _id(), "project_id": project_id,
+                    "source_path": scanned.relative_path, "target": target,
+                    "kind": "import", "inferred": False,
+                } for target in parsed.imports)
+                relation_rows.extend({
+                    "id": _id(), "project_id": project_id,
+                    "source_path": scanned.relative_path, "target": target,
+                    "kind": "call", "inferred": True,
+                } for target in parsed.calls)
                 for chunk_index, (chunk_content, start_line, end_line) in enumerate(
                     _split_source(scanned.content)
                 ):
                     chunk_id = sha256(
                         f"{project_id}:{scanned.relative_path}:{scanned.content_hash}:{chunk_index}".encode("utf-8")
                     ).hexdigest()
-                    session.add(ProjectChunkModel(
-                        id=chunk_id,
-                        project_id=project_id,
-                        project_file_id=file_id,
-                        relative_path=scanned.relative_path,
-                        content=chunk_content,
-                        start_line=start_line,
-                        end_line=end_line,
-                        vector_id=chunk_id,
-                    ))
-                    session.execute(
-                        text(
-                            "INSERT INTO project_chunks_fts(chunk_id,project_id,content,relative_path) "
-                            "VALUES(:chunk_id,:project_id,:content,:relative_path)"
-                        ),
-                        {
-                            "chunk_id": chunk_id,
-                            "project_id": project_id,
-                            "content": chunk_content,
-                            "relative_path": scanned.relative_path,
-                        },
-                    )
+                    chunk_rows.append({
+                        "id": chunk_id,
+                        "project_id": project_id,
+                        "project_file_id": file_id,
+                        "relative_path": scanned.relative_path,
+                        "content": chunk_content,
+                        "start_line": start_line,
+                        "end_line": end_line,
+                        "vector_id": chunk_id,
+                    })
+                    fts_rows.append({
+                        "chunk_id": chunk_id,
+                        "project_id": project_id,
+                        "content": chunk_content,
+                        "relative_path": scanned.relative_path,
+                    })
+            for model, rows in (
+                (ProjectFileModel, file_rows),
+                (ProjectSymbolModel, symbol_rows),
+                (ProjectRouteModel, route_rows),
+                (ProjectRelationModel, relation_rows),
+                (ProjectChunkModel, chunk_rows),
+            ):
+                if rows:
+                    connection.execute(insert(model), rows)
+            if fts_rows:
+                connection.execute(
+                    text(
+                        "INSERT INTO project_chunks_fts(chunk_id,project_id,content,relative_path) "
+                        "VALUES(:chunk_id,:project_id,:content,:relative_path)"
+                    ),
+                    fts_rows,
+                )
 
     def list_files(self, project_id: str) -> list[ProjectFile]:
         with self.sessions() as session:

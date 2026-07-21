@@ -23,3 +23,18 @@ test('relative JavaScript imports use the same cache-busting strategy', async ()
     }
   }
 });
+
+
+test('all frontend modules use one current API module version', async () => {
+  const files = ['artifacts.js', 'chat.js', 'diagnostics.js', 'documents.js', 'memories.js', 'models.js', 'projects.js'];
+  const versions = [];
+
+  for (const file of files) {
+    const source = await readFile(new URL(`./js/${file}`, import.meta.url), 'utf8');
+    const version = source.match(/from ['"]\.\/api\.js\?v=([^'"]+)['"]/)?.[1];
+    assert.ok(version, `${file} should import a versioned api.js`);
+    versions.push(version);
+  }
+
+  assert.equal(new Set(versions).size, 1, `api.js versions must match: ${versions.join(', ')}`);
+});

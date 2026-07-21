@@ -1,4 +1,4 @@
-import { api, errorText, listFrom } from './api.js?v=20260714.3';
+import { api, errorText, listFrom } from './api.js?v=20260721.7';
 
 let ui;
 let providers = [];

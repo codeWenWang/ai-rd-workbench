@@ -218,6 +218,7 @@ def test_spring_api_docs_are_normalized_and_infer_request_response_examples(tmp_
     """, encoding="utf-8")
     (source / "Result.java").write_text("""
         public class Result<T> {
+            private static final long serialVersionUID = 1L;
             private int code;
             private String msg;
             private T data;
@@ -248,10 +249,51 @@ def test_spring_api_docs_are_normalized_and_infer_request_response_examples(tmp_
     assert "### 1.4 根据ID查询" in content
     assert "### 1.5 修改部门" in content
     assert '"id": 1' in content
+    assert "serialVersionUID" not in content
     assert "请求样例：** `/depts/1`" in content
     assert "`PATCH`" not in content
     assert "AdminUiController" not in content
 
+
+def test_sample_project_is_a_classroom_ready_multimodule_crud_demo(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[2] / "fixtures" / "sample_project"
+    database = Database(f"sqlite:///{(tmp_path / 'sample-demo.db').as_posix()}")
+    database.create_schema()
+    projects = SqliteProjectRepository(database.session_factory)
+    analysis = SqliteProjectAnalysisRepository(database.session_factory)
+    project = projects.create(name="研发任务管理演示", root_path=str(root))
+
+    summary = ProjectAnalysisUseCase(
+        projects, analysis, LocalProjectScanner(), ParserRegistry()
+    ).scan(project.id)
+    artifacts = ArtifactUseCase(projects, analysis)
+    architecture = artifacts.generate(project.id, "architecture").content
+    flow = artifacts.generate(project.id, "flow").content
+    sequence = artifacts.generate(project.id, "sequence").content
+    api_docs = artifacts.generate(project.id, "api_docs").content
+
+    assert summary.file_count >= 16
+    assert summary.route_count == 6
+    assert all(
+        module in architecture
+        for module in ("api", "core-service", "data-repository", "domain")
+    )
+    assert "api --> core_service" in architecture
+    assert "api --> data_repository" in architecture
+    assert "core_service --> data_repository" in architecture
+    assert "GET /api/tasks" in flow
+    assert "TaskController.listTasks" in flow
+    assert "GET /api/tasks" in sequence
+    assert "TaskController.listTasks" in sequence
+    assert "查询研发任务列表" in api_docs
+    assert "创建研发任务" in api_docs
+    assert "根据 ID 查询研发任务" in api_docs
+    assert "更新研发任务" in api_docs
+    assert "删除研发任务" in api_docs
+    assert "完成研发任务" in api_docs
+    assert '"code": 1' in api_docs
+    assert '"message": "success"' in api_docs
+    assert "请求样例：** `/api/tasks/1`" in api_docs
 
 
 def test_large_architecture_groups_modules_by_role() -> None:
@@ -271,10 +313,10 @@ def test_large_architecture_groups_modules_by_role() -> None:
 
     diagram = render_architecture(ProjectInsight("Java / Maven / Spring", modules=modules))
 
-    assert 'group_entry["入口服务 · 1 个模块' in diagram
-    assert 'group_protocol["协议适配 · 10 个模块' in diagram
-    assert "protocol-*" in diagram
-    assert "group_entry --> group_protocol" in diagram
+    assert 'layer_business["业务服务层 · 12 个模块' in diagram
+    assert 'layer_data["数据层 · 1 个模块' in diagram
+    assert "protocol-0（协议适配）" in diagram
+    assert "layer_business --> layer_data" in diagram
     assert diagram.count("protocol-") < 10
 
 
