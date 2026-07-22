@@ -142,6 +142,79 @@ test('project guide explains capabilities and gives concrete source reading step
 });
 
 
+test('project tech stack uses backend-first and frontend-second ordering', async () => {
+  globalThis.localStorage ??= { getItem: () => '', setItem: () => {}, removeItem: () => {} };
+  const projects = await import(`./js/projects.js?stack-order-test=${Date.now()}`);
+
+  assert.deepEqual(
+    projects.primaryTechStack(['css', 'javascript', 'spring boot', 'html', 'java', 'sql', 'vue']),
+    ['Java', 'Spring Boot', 'HTML', 'CSS', 'JavaScript', 'Vue'],
+  );
+});
+
+
+test('project guide explains business roles instead of only scanner capabilities', async () => {
+  globalThis.localStorage ??= { getItem: () => '', setItem: () => {}, removeItem: () => {} };
+  const projects = await import(`./js/projects.js?business-guide-test=${Date.now()}`);
+  const guide = projects.buildProjectGuide(
+    { name: '图书管理系统', tech_stack: ['java', 'spring boot', 'vue'] },
+    [
+      { relative_path: 'README.md' },
+      { relative_path: 'server/BookController.java' },
+      { relative_path: 'server/BookService.java' },
+      { relative_path: 'server/BookRepository.java' },
+      { relative_path: 'web/src/Book.vue' },
+    ],
+    [
+      { method: 'GET', path: '/books' },
+      { method: 'POST', path: '/borrow' },
+      { method: 'PUT', path: '/books/{id}' },
+    ],
+  );
+
+  assert.equal(guide.businessFunctions.length, 3);
+  assert.deepEqual(guide.businessFunctions.map(item => item.role), ['用户端', '管理端', '运维端']);
+  assert.match(guide.businessFunctions.map(item => item.description).join(' '), /查书|借阅|归还/);
+  assert.match(guide.businessFunctions.map(item => item.description).join(' '), /图书|分类|用户|借阅/);
+  assert.match(guide.businessFunctions.map(item => item.description).join(' '), /日志|统计|逾期/);
+});
+
+
+test('project guide is one parent card with nested content panels and a half-width source drawer', async () => {
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+  const projects = await readFile(new URL('./js/projects.js', import.meta.url), 'utf8');
+
+  assert.match(css, /\.project-introduction\s*\{[^}]*border:\s*1px solid var\(--line\)/s);
+  assert.match(css, /\.guide-summary[^\{]*\{[^}]*border:\s*1px solid var\(--line\)/s);
+  assert.match(css, /\.guide-business[^\{]*\{[^}]*border:\s*1px solid var\(--line\)/s);
+  assert.match(css, /\.guide-business\s+section\s*\{[^}]*border:\s*1px solid var\(--line\)/s);
+  assert.match(css, /\.guide-details\s*>\s*section\s*\{[^}]*border:\s*1px solid var\(--line\)/s);
+  assert.match(projects, /guide-business"><h3>业务能力<\/h3>/);
+  assert.match(projects, /section-kicker guide-heading">项目导读<\/span>\s*<div class="guide-summary"><h2>这个项目能做什么<\/h2>/s);
+  assert.match(css, /\.detail-drawer\.wide\s*\{[^}]*width:\s*min\(50vw,/s);
+  assert.doesNotMatch(css, /\.detail-drawer\.wide\s*\{[^}]*78vw/s);
+});
+
+
+test('endpoint source snippet contains controller context and only the selected method', async () => {
+  const { sourceSnippet } = await import(`./js/source-snippet.js?endpoint-test=${Date.now()}`);
+  const source = `@RestController\n@RequestMapping("/user/category")\npublic class CategoryController {\n\n    @Autowired\n    private CategoryService categoryService;\n\n    @GetMapping("/list")\n    public Result<List<Category>> list(Integer type) {\n        List<Category> list = categoryService.list(type);\n        return Result.success(list);\n    }\n\n    @DeleteMapping("/{id}")\n    public void delete(Long id) { }\n}`;
+
+  const snippet = sourceSnippet(source, 'CategoryController.java:8', { endpoint: true });
+  assert.match(snippet, /@RestController/);
+  assert.match(snippet, /private CategoryService categoryService;/);
+  assert.match(snippet, /@GetMapping\("\/list"\)/);
+  assert.match(snippet, /return Result\.success\(list\);/);
+  assert.doesNotMatch(snippet, /@DeleteMapping/);
+
+  const compact = `@RestController\npublic class DemoController {\n@GetMapping("/old")\npublic String old() { return "old"; }\n@PostMapping("/new")\npublic String create() { return "new"; }\n}`;
+  const compactSnippet = sourceSnippet(compact, 'DemoController.java:5', { endpoint: true });
+  assert.match(compactSnippet, /@PostMapping\("\/new"\)/);
+  assert.match(compactSnippet, /return "new"/);
+  assert.doesNotMatch(compactSnippet, /@GetMapping/);
+});
+
+
 test('platform brand uses the new name and a graphical logo without an edition subtitle', async () => {
   const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
 
@@ -300,6 +373,28 @@ test('dark Mermaid diagrams use high-contrast connectors and rerender on theme c
 });
 
 
+test('feature sequence follows one-scenario UML conventions without a visible evidence note', async () => {
+  globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
+  const artifacts = await import(`./js/artifacts.js?sequence-standard-test=${Date.now()}`);
+  const content = artifacts.featureSequence({
+    method: 'GET', path: '/users/{id}', handler: 'UserController.get',
+    module: 'web', framework: 'Spring MVC', source_path: 'src/UserController.java', line_number: 18,
+  });
+
+  assert.match(content, /^sequenceDiagram/m);
+  assert.match(content, /actor U as 外部用户/);
+  assert.match(content, /participant G as 前端 \/ 网关【web】/);
+  assert.match(content, /participant B as 业务服务【UserController】/);
+  assert.match(content, /activate G/);
+  assert.match(content, /activate B/);
+  assert.match(content, /alt 正常流程/);
+  assert.match(content, /else 关键异常/);
+  assert.match(content, /U->>G: GET \/users\/\{id\}\(id\) : 发起请求/);
+  assert.match(content, /G-->>U:/);
+  assert.doesNotMatch(content, /Note over/);
+});
+
+
 test('project connection supports local GitHub and Gitee sources', async () => {
   const projectsSource = await readFile(new URL('./js/projects.js', import.meta.url), 'utf8');
   const apiSource = await readFile(new URL('./js/api.js', import.meta.url), 'utf8');
@@ -367,6 +462,35 @@ test('project connection fields suppress hints and browser autofill', async () =
   assert.doesNotMatch(projectsSource, /留空时使用目录或仓库名称/);
   assert.doesNotMatch(projectsSource, /https:\/\/github\.com\/owner\/repository/);
   assert.doesNotMatch(projectsSource, /https:\/\/gitee\.com\/owner\/repository/);
+});
+
+
+test('project name explicitly opts out of account autofill suggestions', async () => {
+  const projectsSource = await readFile(new URL('./js/projects.js', import.meta.url), 'utf8');
+
+  assert.match(projectsSource, /\{ name: 'project_name', label: '项目名称', autocomplete: 'new-password' \}/);
+  assert.match(projectsSource, /name:\s*result\.project_name/);
+});
+
+
+test('architecture evidence is rendered as layer and module groups', async () => {
+  const artifactsSource = await readFile(new URL('./js/artifacts.js', import.meta.url), 'utf8');
+
+  assert.match(artifactsSource, /parseEvidenceGroups/);
+  assert.match(artifactsSource, /evidence-layer/);
+  assert.match(artifactsSource, /evidence-module/);
+});
+
+
+test('api documentation source links open the selected endpoint context', async () => {
+  const artifactsSource = await readFile(new URL('./js/artifacts.js', import.meta.url), 'utf8');
+  const { renderMarkdown } = await import(`./js/markdown.js?source-link-test=${Date.now()}`);
+  const rendered = renderMarkdown('[查看源码](source://src/main/java/demo/PersonController.java:12)');
+
+  assert.match(rendered, /class="source-link"/);
+  assert.match(rendered, /source:\/\/src\/main\/java\/demo\/PersonController\.java:12/);
+  assert.match(artifactsSource, /source-link/);
+  assert.match(artifactsSource, /showEvidence\([^\n]*endpoint:\s*true/);
 });
 
 

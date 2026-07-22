@@ -32,6 +32,14 @@ const STACK_LABELS = new Map([
   ['langchain', 'LangChain'], ['langgraph', 'LangGraph'], ['node.js', 'Node.js'],
 ]);
 
+const STACK_PRIORITY = new Map([
+  ['Java', 10], ['Kotlin', 11], ['Go', 12], ['C#', 13], ['Python', 20],
+  ['Spring Boot', 30], ['Spring', 31], ['FastAPI', 32], ['Node.js', 33],
+  ['LangChain', 34], ['LangGraph', 35],
+  ['HTML', 100], ['CSS', 101], ['JavaScript', 102], ['TypeScript', 103],
+  ['Vue', 110], ['React', 111],
+]);
+
 export function primaryTechStack(values = []) {
   const result = [];
   for (const raw of values) {
@@ -39,7 +47,7 @@ export function primaryTechStack(values = []) {
     const label = STACK_LABELS.get(normalized);
     if (label && !result.includes(label)) result.push(label);
   }
-  return result;
+  return result.sort((left, right) => (STACK_PRIORITY.get(left) ?? 900) - (STACK_PRIORITY.get(right) ?? 900));
 }
 
 function firstMatchingPath(files, patterns, used) {
@@ -59,7 +67,9 @@ export function buildProjectGuide(project, files = [], routes = []) {
     .filter(part => part && !/^\{.*\}$/.test(part) && !/^\d+$/.test(part) && !/^(api|v\d+|internal)$/i.test(part)))]
     .slice(0, 5);
   const resourceText = routeResources.join('、');
-  const summary = `${project?.name || '当前项目'} 是一个以 ${stackText} 构建的源码项目。平台已扫描 ${files.length} 个文件${routes.length ? `并识别 ${routes.length} 个接口` : ''}。${resourceText ? `从接口和目录结构看，项目主要围绕 ${resourceText} 等功能展开。` : '可以通过目录结构、入口文件和模块依赖快速了解它的职责。'}`;
+  const projectText = `${project?.name || ''} ${project?.source_uri || ''} ${files.map(file => file.relative_path || '').join(' ')} ${routes.map(route => route.path || '').join(' ')}`.toLowerCase();
+  const businessFunctions = inferBusinessFunctions(projectText, resourceText, routes, files);
+  const summary = `${project?.name || '当前项目'} 是一个以 ${stackText} 构建的源码项目。平台已扫描 ${files.length} 个文件${routes.length ? `并识别 ${routes.length} 个接口` : ''}。${businessFunctions[0].intro}`;
 
   const capabilities = [];
   if (routes.length) capabilities.push(`提供 ${routes.length} 个接口，覆盖 ${resourceText || '项目核心业务'} 的查询和操作流程。`);
@@ -79,7 +89,40 @@ export function buildProjectGuide(project, files = [], routes = []) {
   const readingSteps = candidates.map(([label, patterns]) => ({ label, path: firstMatchingPath(files, patterns, used) }))
     .filter(item => item.path);
   if (!readingSteps.length && files.length) readingSteps.push({ label: '从项目根目录的第一个源码文件开始浏览', path: files[0].relative_path });
-  return { summary, capabilities, readingSteps };
+  return { summary, capabilities, businessFunctions, readingSteps };
+}
+
+function inferBusinessFunctions(projectText, resourceText, routes, files) {
+  const has = pattern => pattern.test(projectText);
+  if (has(/book|library|borrow|图书|图书馆|借阅|归还/)) {
+    return [
+      { role: '用户端', description: '用户可以查找图书、查看详情、提交借阅和归还操作，并查看自己的借阅记录与逾期信息。', intro: '它面向图书借阅场景，把查书、借阅、归还和借阅记录集中到一个系统中。' },
+      { role: '管理端', description: '管理员统一维护图书、分类和用户，处理借阅订单、归还状态以及逾期记录。', intro: '' },
+      { role: '运维端', description: '系统记录关键操作日志，统计馆藏、借阅和逾期数据，帮助管理人员进行日常复盘。', intro: '' },
+    ];
+  }
+  if (has(/kkrepo|repository|artifact|blob-store|blobstores|制品|仓库|nexus|maven|npm/)) {
+    return [
+      { role: '使用端', description: '开发者可以浏览和搜索制品仓库，查看版本与元数据，并通过接口上传、下载或校验对象。', intro: '它是一个面向团队的制品仓库服务，用来统一保存、查询和分发构建产物。' },
+      { role: '管理端', description: '管理员可以管理仓库格式、Blob 存储、访问策略和兼容性配置，控制不同仓库的使用边界。', intro: '' },
+      { role: '运维端', description: '系统提供存储连通性检查、健康状态、对象统计和迁移信息，便于定位存储或部署问题。', intro: '' },
+    ];
+  }
+  if (has(/order|product|cart|payment|商品|订单|购物车|支付/)) {
+    return [
+      { role: '用户端', description: '用户可以浏览商品、加入购物车、提交订单并查询订单状态。', intro: '它围绕商品交易流程组织页面、接口和数据模块。' },
+      { role: '管理端', description: '管理员可以维护商品与分类，处理订单、库存和售后状态。', intro: '' },
+      { role: '运维端', description: '系统记录操作日志并汇总交易、库存和异常数据，支持运营分析。', intro: '' },
+    ];
+  }
+  const routeHint = resourceText || '核心业务';
+  const hasUi = files.some(file => /\.(html|vue|jsx|tsx|css)$/i.test(file.relative_path || ''));
+  const hasData = files.some(file => /(repository|dao|mapper|database|storage)/i.test(file.relative_path || ''));
+  return [
+    { role: hasUi ? '使用端' : '调用端', description: `通过${hasUi ? '页面和' : ''}接口访问 ${routeHint}，完成项目提供的主要查询与操作。`, intro: `它围绕 ${routeHint} 等核心功能组织入口、业务处理和数据访问模块。` },
+    { role: '业务端', description: '业务服务负责校验请求、编排核心规则，并把一次调用拆分为可追踪的处理步骤。', intro: '' },
+    { role: hasData ? '运维端' : '维护端', description: `${hasData ? '数据访问和存储模块负责持久化业务数据。' : '项目可从入口文件、模块依赖和接口定义逐步阅读。'}重新扫描后可继续补充可验证的功能证据。`, intro: '' },
+  ];
 }
 
 function sortTreeNodes(nodes) {
@@ -158,7 +201,9 @@ function renderProjectSelector() {
 function projectIntroduction(project) {
   if (!project) return '<div class="empty-state"><strong>从一个项目开始</strong><span>添加本地目录、GitHub 或 Gitee 仓库，扫描后即可查看项目结构。</span></div>';
   const guide = buildProjectGuide(project, state.files, state.routes);
-  return `<div class="guide-summary"><span class="section-kicker">项目导读</span><h2>这个项目能做什么</h2><p>${ui.escape(guide.summary)}</p></div>
+  return `<span class="section-kicker guide-heading">项目导读</span>
+    <div class="guide-summary"><h2>这个项目能做什么</h2><p>${ui.escape(guide.summary)}</p></div>
+    <div class="guide-business"><h3>业务能力</h3>${guide.businessFunctions.map(item => `<section><strong>${ui.escape(item.role)}</strong><p>${ui.escape(item.description)}</p></section>`).join('')}</div>
     <div class="guide-details">
       <section><h3>主要能力</h3><ul>${guide.capabilities.map(item => `<li>${ui.escape(item)}</li>`).join('')}</ul></section>
       <section><h3>源码阅读路线</h3><ol>${guide.readingSteps.map(item => `<li><span>${ui.escape(item.label)}</span><code>${ui.escape(item.path)}</code></li>`).join('')}</ol></section>
@@ -221,7 +266,7 @@ export async function addProject() {
       { name: 'source_type', label: '项目来源', type: 'select', value: 'local', options: [
         ['local', '本地目录'], ['github', 'GitHub'], ['gitee', 'Gitee'],
       ] },
-      { name: 'name', label: '项目名称' },
+      { name: 'project_name', label: '项目名称', autocomplete: 'new-password' },
       { name: 'root_path', label: '本地项目文件夹', type: 'directory', placeholder: '选择本机中的项目文件夹', requiredWhen: { source_type: 'local' } },
       { name: 'github_url', label: 'GitHub 仓库地址', requiredWhen: { source_type: 'github' } },
       { name: 'gitee_url', label: 'Gitee 仓库地址', requiredWhen: { source_type: 'gitee' } },
@@ -236,7 +281,7 @@ export async function addProject() {
     'progress',
   );
   try {
-    const payload = { name: result.name, source_type: result.source_type };
+    const payload = { name: result.project_name, source_type: result.source_type };
     if (result.source_type === 'local') payload.root_path = result.root_path;
     else payload.repository_url = result.github_url || result.gitee_url;
     const project = await api.createProject(payload);

@@ -36,9 +36,7 @@ def render_architecture(insight) -> str:
         entry_modules = insight.modules[:1]
     for module in entry_modules[:4]:
         lines.append(f"    client --> {_node_id(module.name)}")
-    for module in insight.modules:
-        for path in module.evidence_paths:
-            lines.append(f"    %% evidence: {_label(path)}")
+    lines.extend(_evidence_comments(insight.modules))
     return "\n".join(lines)
 
 
@@ -71,10 +69,20 @@ def _render_grouped_architecture(modules) -> str:
         source_id = layer_ids[source_layer]
         target_id = layer_ids[target_layer]
         lines.append(f"    {source_id} --> {target_id}")
-    for module in modules:
-        for path in module.evidence_paths:
-            lines.append(f"    %% evidence: {_label(path)}")
+    lines.extend(_evidence_comments(modules))
     return "\n".join(lines)
+
+
+def _evidence_comments(modules) -> list[str]:
+    lines = []
+    for module in modules:
+        layer = _architecture_layer(module.role)
+        module_label = f"{module.name}（{module.role}）"
+        for path in module.evidence_paths:
+            lines.append(
+                f"    %% evidence: {_label(layer)} / {_label(module_label)} / {_label(path)}"
+            )
+    return lines
 
 
 def _architecture_layer(role: str) -> str:
@@ -139,35 +147,123 @@ def render_flow(insight) -> str:
 def render_sequence(insight) -> str:
     endpoint = _representative_endpoint(insight)
     modules = {module.name: module for module in insight.modules}
-    lines = ["sequenceDiagram", "    participant U as 客户端"]
+    lines = ["sequenceDiagram", "    actor U as 外部用户"]
     if endpoint:
-        entry = _participant_id(endpoint.module or "application")
-        handler = "H"
-        lines.append(f"    participant {entry} as {_label(endpoint.module)} · {_label(endpoint.framework)}")
-        lines.append(f"    participant {handler} as {_label(endpoint.handler)}")
-        lines.append(f"    U->>{entry}: {endpoint.method} {_label(endpoint.path)}")
-        lines.append(f"    {entry}->>{handler}: 调用处理器")
-        for index, module_name in enumerate(_relevant_dependencies(endpoint, modules)):
-            participant = f"M{index}"
-            module = modules[module_name]
-            lines.append(f"    participant {participant} as {_label(module.name)} · {_label(module.role)}")
-            lines.append(f"    {handler}->>{participant}: 模块依赖推断")
-            lines.append(f"    {participant}-->>{handler}: 返回")
-        lines.append(f"    {handler}-->>{entry}: 返回结果")
-        lines.append(f"    {entry}-->>U: HTTP 响应")
-        lines.append(f"    Note over U,{entry}: 源码证据 {_label(endpoint.source_path)}:{endpoint.line_number}")
-    elif insight.modules:
-        ordered = _ordered_modules(insight.modules)[:6]
-        previous = "U"
-        for index, module in enumerate(ordered):
-            participant = f"M{index}"
-            lines.append(f"    participant {participant} as {_label(module.name)} · {_label(module.role)}")
-            lines.append(f"    {previous}->>{participant}: 模块交互")
-            previous = participant
-        lines.append("    Note over U,M0: 当前静态分析未识别到可验证接口，展示模块级交互")
+        gateway = "G"
+        business = "B"
+        entry_name = _label(endpoint.module or "应用")
+        handler_name = _label((endpoint.handler or "业务处理器").rsplit(".", 1)[0] or "业务处理器")
+        dependencies = [modules[name] for name in _sequence_dependencies(endpoint, modules)]
+        lines.extend([
+            f"    participant {gateway} as 前端 / 网关【{entry_name}】",
+            f"    participant {business} as 业务服务【{handler_name}】",
+        ])
+        dependency_ids = []
+        for index, module in enumerate(dependencies):
+            kind = _sequence_kind(module)
+            prefix = {"middleware": "M", "database": "D", "business": "S"}[kind]
+            participant = f"{prefix}{index}"
+            dependency_ids.append((participant, module, kind))
+            lines.append(f"    participant {participant} as {_sequence_participant_label(module)}")
+        parameter_text = _sequence_parameters(endpoint.path)
+        lines.extend([
+            f"    U->>{gateway}: {_label(endpoint.method)} {_label(endpoint.path)}({parameter_text}) : 发起请求",
+            f"    activate {gateway}",
+            f"    {gateway}->>{business}: {_label(endpoint.handler)}({parameter_text}) : 处理请求",
+            f"    activate {business}",
+            "    alt 正常流程",
+        ])
+        for participant, module, kind in dependency_ids:
+            module_name = _label(module.name)
+            if kind == "middleware":
+                lines.append(f"        {business}-){participant}: {module_name}(状态) : 发布异步消息")
+                continue
+            action = "查询数据" if kind == "database" else "调用模块"
+            lines.extend([
+                f"        {business}->>{participant}: {module_name}(关键参数) : {action}",
+                f"        activate {participant}",
+                f"        {participant}-->>{business}: {module_name}(结果) : 返回数据",
+                f"        deactivate {participant}",
+            ])
+        lines.extend([
+            f"        {business}-->>{gateway}: 业务结果(状态) : 处理成功",
+            f"        {gateway}-->>U: HTTP 响应(状态) : 返回成功",
+            "    else 关键异常",
+            f"        {business}-->>{gateway}: 错误(状态) : 校验或业务失败",
+            f"        {gateway}-->>U: HTTP 响应(状态) : 返回错误",
+            "    end",
+            f"    deactivate {business}",
+            f"    deactivate {gateway}",
+            f"    %% evidence: 业务服务层 / {_label(endpoint.module or '应用')}（入口服务） / {_label(endpoint.source_path)}:{endpoint.line_number}",
+        ])
+        for _, module, _ in dependency_ids:
+            layer = _architecture_layer(module.role)
+            for path in module.evidence_paths:
+                lines.append(f"    %% evidence: {_label(layer)} / {_label(module.name)}（{_label(module.role)}） / {_label(path)}")
+        return "\n".join(lines)
+
+    if insight.modules:
+        ordered = sorted(insight.modules, key=lambda item: (_sequence_kind_priority(item), item.name))[:5]
+        lines.extend([f"    participant S{index} as {_sequence_participant_label(module)}" for index, module in enumerate(ordered)])
+        lines.extend([
+            "    U->>S0: 项目入口(无) : 发起请求",
+            "    activate S0",
+            "    alt 正常流程",
+            "        S0-->>U: 处理结果(状态) : 返回成功",
+            "    else 关键异常",
+            "        S0-->>U: 错误(状态) : 无法确认处理结果",
+            "    end",
+            "    deactivate S0",
+        ])
     else:
-        lines.append("    Note over U: 当前静态分析未识别到可验证交互")
+        lines.extend([
+            '    participant S0 as 业务服务【未识别模块】',
+            '    U->>S0: 项目入口(无) : 发起请求',
+            '    S0-->>U: 处理结果(状态) : 无法确认处理结果',
+        ])
     return "\n".join(lines)
+
+
+def _sequence_parameters(path: str) -> str:
+    parameters = re.findall(r"\{([^}]+)\}", str(path or ""))
+    return ",".join(parameters) or "无"
+
+
+def _sequence_kind(module) -> str:
+    text = f"{module.name} {module.role}".casefold()
+    if re.search(r"database|mysql|postgres|jdbc|storage|repository|dao|持久化|存储|数据库", text):
+        return "database"
+    if re.search(r"mq|message|queue|kafka|rabbit|event|notify|notification|redis|cache|消息|队列|缓存|中间件", text):
+        return "middleware"
+    return "business"
+
+
+def _sequence_kind_priority(module) -> int:
+    return {"business": 0, "middleware": 1, "database": 2}[_sequence_kind(module)]
+
+
+def _sequence_participant_label(module) -> str:
+    kind = _sequence_kind(module)
+    label = {"business": "业务服务", "middleware": "中间件", "database": "数据库"}[kind]
+    return f"{label}【{_label(module.name)}】"
+
+
+def _sequence_dependencies(endpoint, modules: dict) -> list[str]:
+    if endpoint.module not in modules:
+        return []
+    candidates = []
+    context = f"{endpoint.path} {endpoint.handler}".casefold()
+    for name in modules[endpoint.module].dependencies:
+        module = modules.get(name)
+        if not module or module.role in {"界面", "迁移", "测试"}:
+            continue
+        if module.role == "协议适配":
+            protocol = name.casefold().replace("protocol-", "").replace("protocol_", "")
+            if protocol and protocol not in context:
+                continue
+        candidates.append(module)
+    candidates.sort(key=lambda item: (_sequence_kind_priority(item), item.name))
+    return [item.name for item in candidates[:5]]
 
 
 def _representative_endpoint(insight):

@@ -4,6 +4,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
+from urllib.parse import quote
 
 
 ALLOWED_METHODS = {"GET", "POST", "PUT", "DELETE"}
@@ -83,7 +84,7 @@ def _endpoint_document(endpoint, source, models: dict[str, JavaModel]) -> ApiEnd
             for name in re.findall(r"\{([^}]+)\}", endpoint.path)
         ]
         request_body = (
-            {"示例字段": "请根据实际请求体补充"}
+            {"field": "string"}
             if endpoint.method in {"POST", "PUT"} else UNKNOWN
         )
         return ApiEndpointDoc(
@@ -93,7 +94,7 @@ def _endpoint_document(endpoint, source, models: dict[str, JavaModel]) -> ApiEnd
             parameters=parameters,
             path_example=_path_example(endpoint.path, parameters),
             request_body=request_body,
-            response_body={"code": 1, "message": "success", "data": {}},
+            response_body={"code": 0, "message": "string", "data": {}},
             source_path=endpoint.source_path,
             line_number=endpoint.line_number,
             notes=["请求体与响应为通用静态推断样例，请以实际接口实现和运行结果为准"],
@@ -117,10 +118,10 @@ def _endpoint_document(endpoint, source, models: dict[str, JavaModel]) -> ApiEnd
     parameters = _java_parameters(parameter_text, endpoint.path)
     body_parameter = next((item for item in parameters if item.location == "请求体"), None)
     request_body = (
-        _sample_for_type(body_parameter.type_name, models, field_name=body_parameter.name)
+        _sample_for_type(body_parameter.type_name, models, field_name=body_parameter.name, schema=True)
         if body_parameter else UNKNOWN
     )
-    response_body = _sample_for_type(return_type, models)
+    response_body = _sample_for_type(return_type, models, schema=True)
     notes = []
     if request_body is UNKNOWN and body_parameter:
         notes.append(f"未找到请求体类型 {body_parameter.type_name} 的字段定义")
@@ -174,10 +175,9 @@ def _render_endpoint(document: ApiEndpointDoc, index: int) -> list[str]:
         lines.extend(["静态分析未确认具体响应结构。", ""])
     else:
         lines.extend(["```json", _json(document.response_body), "```", ""])
-    note = "；".join(document.notes) if document.notes else "结构根据源码静态推断，请以实际运行结果为准"
+    source_location = quote(document.source_path, safe="/-._~")
     lines.extend([
-        f"**备注：** {note}", "",
-        f"**源码：** `{document.source_path}:{document.line_number}`", "",
+        f"**源码：** [查看接口关键源码](source://{source_location}:{document.line_number})", "",
     ])
     return lines
 
@@ -392,7 +392,15 @@ def _java_models(files) -> dict[str, JavaModel]:
     return models
 
 
-def _sample_for_type(type_name: str, models: dict[str, JavaModel], *, field_name: str = "", type_bindings=None, depth: int = 0):
+def _sample_for_type(
+    type_name: str,
+    models: dict[str, JavaModel],
+    *,
+    field_name: str = "",
+    type_bindings=None,
+    depth: int = 0,
+    schema: bool = False,
+):
     if depth > 5:
         return UNKNOWN
     type_bindings = dict(type_bindings or {})
@@ -406,13 +414,19 @@ def _sample_for_type(type_name: str, models: dict[str, JavaModel], *, field_name
     if simple in {"List", "Collection", "Set", "Iterable", "Page"}:
         if not arguments:
             return []
-        item = _sample_for_type(arguments[0], models, depth=depth + 1)
+        item = _sample_for_type(
+            arguments[0], models, type_bindings=type_bindings,
+            depth=depth + 1, schema=schema,
+        )
         return [] if item is UNKNOWN else [item]
     if simple in {"Optional", "ResponseEntity", "HttpEntity"} and arguments:
-        return _sample_for_type(arguments[0], models, depth=depth + 1)
+        return _sample_for_type(
+            arguments[0], models, type_bindings=type_bindings,
+            depth=depth + 1, schema=schema,
+        )
     if simple in {"Map", "HashMap", "LinkedHashMap"}:
         return {}
-    scalar = _scalar_sample(simple, field_name, unknown=UNKNOWN)
+    scalar = _scalar_sample(simple, field_name, unknown=UNKNOWN, schema=schema)
     if scalar is not UNKNOWN:
         return scalar
     model = models.get(simple)
@@ -429,32 +443,50 @@ def _sample_for_type(type_name: str, models: dict[str, JavaModel], *, field_name
             field_name=item.name,
             type_bindings=bindings,
             depth=depth + 1,
+            schema=schema,
         )
         output[item.name] = None if value is UNKNOWN else value
     return output
 
 
-def _scalar_sample(type_name: str, field_name: str = "", *, unknown=1):
+def _scalar_sample(type_name: str, field_name: str = "", *, unknown=1, schema: bool = False):
     simple = type_name.rsplit(".", 1)[-1].strip()
     lower_name = field_name.casefold()
     if simple in {"byte", "short", "int", "Integer", "long", "Long", "BigInteger"}:
-        return 1
+        return 0 if schema else 1
     if simple in {"float", "Float", "double", "Double", "BigDecimal"}:
-        return 1.0
+        return 0.0 if schema else 1.0
     if simple in {"boolean", "Boolean"}:
-        return True
+        return False if schema else True
     if simple in {"LocalDateTime", "OffsetDateTime", "ZonedDateTime", "Date", "Timestamp"}:
-        return "2026-01-01T00:00:00"
+        return "string" if schema else "2026-01-01T00:00:00"
     if simple == "LocalDate":
-        return "2026-01-01"
+        return "string" if schema else "2026-01-01"
     if simple in {"String", "char", "Character", "UUID"}:
+        if schema:
+            return "string"
         if lower_name == "msg" or "message" in lower_name:
             return "success"
         if lower_name == "name" or lower_name.endswith("name"):
-            return "示例名称"
+            return "张三"
         if lower_name == "code":
             return "success"
-        return "示例文本"
+        samples = {
+            "objectkey": "demo-bucket/tasks/1",
+            "endpoint": "https://oss-cn-hangzhou.aliyuncs.com",
+            "region": "cn-hangzhou",
+            "bucket": "demo-bucket",
+            "path": "/tasks/1",
+            "resolvedpath": "/data/tasks/1",
+            "state": "READY",
+            "status": "ACTIVE",
+            "email": "zhangsan@example.com",
+            "phone": "13800138000",
+            "address": "北京市海淀区中关村大街 1 号",
+            "title": "研发任务示例",
+            "description": "完成项目接口联调",
+        }
+        return samples.get(lower_name, "示例值")
     return unknown
 
 

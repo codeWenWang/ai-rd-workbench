@@ -1,9 +1,89 @@
 import { api, errorText, listFrom } from './api.js?v=20260721.7';
-import { activeProjectId, projectFileMetadata } from './projects.js?v=20260721.7';
+import { activeProjectId, projectFileMetadata } from './projects.js?v=20260722.6';
+import { sourceSnippet } from './source-snippet.js?v=20260722.3';
 
 let ui;
 const latest = new Map();
 let projectRoutes = [];
+
+function inferredEvidenceLayer(moduleName) {
+  const value = String(moduleName || '').toLowerCase();
+  if (/(ui|frontend|web|client)/.test(value)) return '客户端层';
+  if (/(persistence|database|jdbc|mysql|postgres|repository|storage|blob|s3)/.test(value)) return '数据层';
+  return '业务服务层';
+}
+
+export function parseEvidenceGroups(content = '') {
+  const layers = new Map();
+  const add = (layerName, moduleName, path) => {
+    if (!path) return;
+    if (!layers.has(layerName)) layers.set(layerName, new Map());
+    const modules = layers.get(layerName);
+    if (!modules.has(moduleName)) modules.set(moduleName, new Set());
+    modules.get(moduleName).add(path);
+  };
+  for (const line of String(content).split('\n')) {
+    const match = line.match(/^\s*%%\s*evidence:\s*(.+?)\s*$/);
+    if (!match) continue;
+    const parts = match[1].split(/\s+\/\s+/);
+    if (parts.length >= 3) {
+      add(parts[0], parts[1], parts.slice(2).join(' / '));
+    } else {
+      const path = match[1].trim();
+      const moduleName = path.split('/')[0] || '项目源码';
+      add(inferredEvidenceLayer(moduleName), moduleName, path);
+    }
+  }
+  if (!layers.size) {
+    const paths = [...new Set((String(content).match(/[A-Za-z0-9_./-]+\.(?:py|java|js|ts|tsx|jsx|vue|go|cs)(?::\d+)?/g) || []))];
+    for (const path of paths) {
+      const moduleName = path.split('/')[0] || '项目源码';
+      add(inferredEvidenceLayer(moduleName), moduleName, path);
+    }
+  }
+  return [...layers].map(([name, modules]) => ({
+    name,
+    modules: [...modules].map(([moduleName, paths]) => ({ name: moduleName, paths: [...paths] })),
+  }));
+}
+
+function evidenceNode(content) {
+  const groups = parseEvidenceGroups(content);
+  if (!groups.length) return null;
+  const evidence = document.createElement('section');
+  evidence.className = 'artifact-evidence';
+  evidence.innerHTML = '<h2>源码证据</h2><p>证据按架构层和模块归类，点击文件可查看扫描时保存的源码。</p>';
+  const body = document.createElement('div');
+  body.className = 'evidence-groups';
+  for (const group of groups) {
+    const layer = document.createElement('section');
+    layer.className = 'evidence-layer';
+    const heading = document.createElement('h3');
+    heading.textContent = group.name;
+    layer.append(heading);
+    for (const item of group.modules) {
+      const module = document.createElement('div');
+      module.className = 'evidence-module';
+      const moduleHeading = document.createElement('h4');
+      moduleHeading.textContent = item.name;
+      const links = document.createElement('div');
+      links.className = 'evidence-links';
+      for (const path of item.paths) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'evidence-link';
+        button.textContent = path;
+        button.addEventListener('click', () => showEvidence(path));
+        links.append(button);
+      }
+      module.append(moduleHeading, links);
+      layer.append(module);
+    }
+    body.append(layer);
+  }
+  evidence.append(body);
+  return evidence;
+}
 
 export function mermaidThemeConfig(theme) {
   if (theme !== 'dark') return { startOnLoad: false, theme: 'default' };
@@ -92,27 +172,19 @@ function contentNode(view, artifact) {
     diagram.textContent = artifact.content;
     container.append(diagram);
     renderDiagram(diagram, artifact.content);
-    const evidencePaths = [...new Set((artifact.content.match(/[A-Za-z0-9_./-]+\.(?:py|java|js|ts|tsx|jsx|vue|go|cs)(?::\d+)?/g) || []))];
-    if (evidencePaths.length) {
-      const evidence = document.createElement('section');
-      evidence.className = 'artifact-evidence';
-      evidence.innerHTML = '<h2>源码证据</h2><p>点击证据可查看扫描时保存的源码片段。</p>';
-      const links = document.createElement('div');
-      for (const path of evidencePaths.slice(0, 12)) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'evidence-link';
-        button.textContent = path;
-        button.addEventListener('click', () => showEvidence(path));
-        links.append(button);
-      }
-      evidence.append(links);
-      container.append(evidence);
-    }
+    const evidence = evidenceNode(artifact.content);
+    if (evidence) container.append(evidence);
   } else {
     const markdown = document.createElement('article');
     markdown.className = 'artifact-markdown';
     markdown.innerHTML = ui.renderMarkdown(artifact.content);
+    markdown.querySelectorAll('a.source-link').forEach(link => {
+      link.addEventListener('click', event => {
+        event.preventDefault();
+        const location = decodeURIComponent(link.getAttribute('href').replace(/^source:\/\//, ''));
+        showEvidence(location, { endpoint: true });
+      });
+    });
     container.append(markdown);
   }
 }
@@ -178,25 +250,37 @@ function renderDiagram(diagram, content) {
   globalThis.mermaid.run({ nodes: [diagram] }).catch(() => { diagram.classList.add('artifact-code'); });
 }
 
-function featureSequence(route) {
+export function featureSequence(route) {
   const method = String(route.method || 'GET').replace(/[^A-Z]/g, '') || 'GET';
-  const path = String(route.path || '/').replaceAll(':', '：').replaceAll('\n', ' ');
-  const handler = String(route.handler || '处理器').replaceAll(':', '：').replaceAll('\n', ' ');
-  const source = String(route.source_path || '').replaceAll(':', '：').replaceAll('\n', ' ');
+  const path = String(route.path || '/').replaceAll('\n', ' ').trim();
+  const handler = String(route.handler || '业务处理器').replaceAll('\n', ' ').trim().split('.')[0] || '业务处理器';
+  const moduleName = String(route.module || '应用').replaceAll('\n', ' ').trim();
+  const params = [...path.matchAll(/\{([^}]+)\}/g)].map(match => match[1]).join(',') || '无';
+  const source = String(route.source_path || '').replaceAll('\n', ' ').trim();
+  const line = Number(route.line_number || 1);
   return [
     'sequenceDiagram',
-    '    participant U as 客户端',
-    '    participant A as 应用 API',
-    `    participant H as ${handler}`,
-    `    U->>A: ${method} ${path}`,
-    '    A->>H: 调用处理器',
-    '    H-->>A: 返回业务结果',
-    '    A-->>U: HTTP 响应',
-    `    Note over A,H: 源码证据 ${source}:${Number(route.line_number || 1)}`,
+    '    actor U as 外部用户',
+    `    participant G as 前端 / 网关【${moduleName}】`,
+    `    participant B as 业务服务【${handler}】`,
+    `    U->>G: ${method} ${path}(${params}) : 发起请求`,
+    '    activate G',
+    `    G->>B: ${handler}(${params}) : 处理请求`,
+    '    activate B',
+    '    alt 正常流程',
+    '        B-->>G: 业务结果(状态) : 处理成功',
+    '        G-->>U: HTTP 响应(状态) : 返回成功',
+    '    else 关键异常',
+    '        B-->>G: 错误(状态) : 校验或业务失败',
+    '        G-->>U: HTTP 响应(状态) : 返回错误',
+    '    end',
+    '    deactivate B',
+    '    deactivate G',
+    `    %% evidence: 业务服务层 / ${handler} / ${source}:${line}`,
   ].join('\n');
 }
 
-async function showEvidence(location) {
+async function showEvidence(location, { endpoint = false } = {}) {
   const file = projectFileMetadata(location);
   if (!file) {
     ui.openDrawer({ eyebrow: '源码证据', title: location, html: '<div class="source-text">当前扫描结果中未找到该文件，请重新扫描项目。</div>' });
@@ -204,26 +288,14 @@ async function showEvidence(location) {
   }
   try {
     const detail = await api.projectFile(activeProjectId(), file.id);
-    const snippet = sourceSnippet(detail.content || file.excerpt || '', location);
+    const snippet = sourceSnippet(detail.content || file.excerpt || '', location, { endpoint });
     ui.openDrawer({
-      eyebrow: '源码证据',
+      eyebrow: endpoint ? '接口关键源码' : '源码证据',
       title: location,
       html: `<div class="source-text source-code">${ui.escape(snippet)}</div>`,
+      wide: true,
     });
   } catch {
-    ui.openDrawer({ eyebrow: '源码证据', title: location, html: `<div class="source-text source-code">${ui.escape(file.excerpt || '')}</div>` });
+    ui.openDrawer({ eyebrow: '源码证据', title: location, html: `<div class="source-text source-code">${ui.escape(file.excerpt || '')}</div>`, wide: true });
   }
-}
-
-function sourceSnippet(content, location) {
-  const lines = String(content || '').split('\n');
-  const match = String(location || '').match(/:(\d+)$/);
-  if (!match) return lines.slice(0, 80).map((line, index) => `${String(index + 1).padStart(4)}  ${line}`).join('\n');
-  const lineNumber = Math.max(1, Number(match[1]));
-  const start = Math.max(0, lineNumber - 7);
-  const end = Math.min(lines.length, lineNumber + 6);
-  return lines.slice(start, end).map((line, index) => {
-    const current = start + index + 1;
-    return `${current === lineNumber ? '>' : ' '} ${String(current).padStart(4)}  ${line}`;
-  }).join('\n');
 }

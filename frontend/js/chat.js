@@ -1,6 +1,6 @@
 import { api, errorText, listFrom, streamChat } from './api.js?v=20260721.7';
 import { groupWorkspaceConversations } from './conversation-groups.js?v=20260721.1';
-import { activeProjectId, allProjects } from './projects.js?v=20260721.7';
+import { activeProjectId, allProjects } from './projects.js?v=20260722.6';
 import { comparisonModelIds, selectedModelId } from './models.js?v=20260714.3';
 
 const stageNames = {

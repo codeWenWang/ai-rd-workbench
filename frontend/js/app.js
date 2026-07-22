@@ -1,11 +1,11 @@
-import { initChat } from './chat.js?v=20260721.7';
+import { initChat } from './chat.js?v=20260722.6';
 import { initDocuments } from './documents.js?v=20260721.7';
 import { initMemories } from './memories.js?v=20260721.7';
 import { initDiagnostics } from './diagnostics.js?v=20260721.7';
-import { initProjects } from './projects.js?v=20260721.7';
-import { initArtifacts } from './artifacts.js?v=20260721.7';
+import { initProjects } from './projects.js?v=20260722.6';
+import { initArtifacts } from './artifacts.js?v=20260722.6';
 import { initModels } from './models.js?v=20260721.7';
-import { escapeHtml, renderMarkdown } from './markdown.js?v=20260721.1';
+import { escapeHtml, renderMarkdown } from './markdown.js?v=20260722.1';
 
 const eventBus = new EventTarget();
 const el = id => document.getElementById(id);
@@ -52,10 +52,11 @@ function alert(containerId, message, type = 'error') {
   container.replaceChildren(box);
 }
 
-function openDrawer({ eyebrow = '', title = '详情', html = '' }) {
+function openDrawer({ eyebrow = '', title = '详情', html = '', wide = false }) {
   el('drawer-eyebrow').textContent = eyebrow;
   el('drawer-title').textContent = title;
   el('drawer-content').innerHTML = html;
+  el('detail-drawer').classList.toggle('wide', wide);
   el('detail-drawer').classList.add('open');
   el('detail-drawer').setAttribute('aria-hidden', 'false');
   el('drawer-backdrop').classList.remove('hidden');
@@ -121,6 +122,8 @@ function buildField(field) {
   }
   input.name = field.name;
   input.autocomplete = field.autocomplete || 'off';
+  input.setAttribute('aria-autocomplete', 'none');
+  input.spellcheck = false;
   if (field.required) input.required = true;
   if (field.maxlength) input.maxLength = field.maxlength;
   if (field.type !== 'directory') label.append(input);

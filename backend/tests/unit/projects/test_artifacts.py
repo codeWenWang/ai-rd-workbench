@@ -9,9 +9,13 @@ from app.infrastructure.db.repositories import (
     SqliteProjectRepository,
 )
 from app.infrastructure.db.session import Database
-from app.infrastructure.artifacts.mermaid import render_architecture
+from app.infrastructure.artifacts.mermaid import render_architecture, render_sequence
 from app.infrastructure.artifacts.api_docs import _fallback_title
-from app.infrastructure.projects.insights import ProjectInsight, ProjectModuleInsight
+from app.infrastructure.projects.insights import (
+    ProjectEndpointInsight,
+    ProjectInsight,
+    ProjectModuleInsight,
+)
 from app.infrastructure.projects.parsers import ParserRegistry
 from app.infrastructure.projects.scanner import LocalProjectScanner
 
@@ -239,20 +243,93 @@ def test_spring_api_docs_are_normalized_and_infer_request_response_examples(tmp_
     assert "**请求路径：** `/depts`" in content
     assert "**请求方式：** `GET`" in content
     assert "**请求参数：** 无" in content
-    assert '"code": 1' in content
-    assert '"msg": "success"' in content
+    assert '"code": 0' in content
+    assert '"msg": "string"' in content
     assert '"data": [' in content
-    assert '"createTime": "2026-01-01T00:00:00"' in content
+    assert '"createTime": "string"' in content
     assert "### 1.2 删除部门" in content
     assert "### 1.3 添加部门" in content
-    assert '"name": "示例名称"' in content
+    assert '"name": "string"' in content
     assert "### 1.4 根据ID查询" in content
     assert "### 1.5 修改部门" in content
-    assert '"id": 1' in content
+    assert '"id": 0' in content
     assert "serialVersionUID" not in content
     assert "请求样例：** `/depts/1`" in content
     assert "`PATCH`" not in content
     assert "AdminUiController" not in content
+
+
+def test_api_docs_use_type_templates_without_static_notes_and_link_endpoint_source(tmp_path: Path) -> None:
+    root = tmp_path / "realistic-api"
+    source = root / "src" / "main" / "java" / "demo"
+    source.mkdir(parents=True)
+    (root / "pom.xml").write_text(
+        "<project><artifactId>realistic-api</artifactId></project>",
+        encoding="utf-8",
+    )
+    (source / "PersonController.java").write_text("""
+        @RestController
+        @RequestMapping("/people")
+        public class PersonController {
+            @PostMapping
+            public Person create(@RequestBody Person request) { return null; }
+            public record Person(String name, String objectKey, String region, String state) {}
+        }
+    """, encoding="utf-8")
+    database = Database(f"sqlite:///{(tmp_path / 'realistic.db').as_posix()}")
+    database.create_schema()
+    projects = SqliteProjectRepository(database.session_factory)
+    analysis = SqliteProjectAnalysisRepository(database.session_factory)
+    project = projects.create(name="realistic", root_path=str(root))
+    ProjectAnalysisUseCase(
+        projects, analysis, LocalProjectScanner(), ParserRegistry()
+    ).scan(project.id)
+
+    content = ArtifactUseCase(projects, analysis).generate(project.id, "api_docs").content
+
+    assert '"name": "string"' in content
+    assert '"objectKey": "string"' in content
+    assert '"region": "string"' in content
+    assert '"state": "string"' in content
+    assert "张三" not in content
+    assert "demo-bucket/tasks/1" not in content
+    assert "cn-hangzhou" not in content
+    assert "READY" not in content
+    assert "示例值" not in content
+    assert "结构根据源码静态推断" not in content
+    assert "source://src/main/java/demo/PersonController.java" in content
+
+
+def test_sequence_uses_ordered_participants_activation_and_error_branch() -> None:
+    insight = ProjectInsight(
+        project_type="Java / Spring",
+        modules=[
+            ProjectModuleInsight("web", "入口服务", 3, dependencies=["core", "message-queue", "storage"]),
+            ProjectModuleInsight("core", "核心", 4),
+            ProjectModuleInsight("message-queue", "功能模块", 2),
+            ProjectModuleInsight("storage", "持久化", 3),
+        ],
+        endpoints=[
+            ProjectEndpointInsight(
+                "GET", "/users/{id}", "UserController.get", "web/UserController.java", 18,
+                "Spring MVC", "web",
+            )
+        ],
+    )
+
+    content = render_sequence(insight)
+
+    assert content.index("actor U as 外部用户") < content.index("participant G as 前端 / 网关【web】")
+    assert content.index("participant G as 前端 / 网关【web】") < content.index("participant B as 业务服务【UserController】")
+    assert content.index("业务服务【core】") < content.index("中间件【message-queue】")
+    assert content.index("中间件【message-queue】") < content.index("数据库【storage】")
+    assert "activate G" in content and "deactivate G" in content
+    assert "activate B" in content and "deactivate B" in content
+    assert "alt 正常流程" in content
+    assert "else 关键异常" in content
+    assert "U->>G: GET /users/{id}(id) : 发起请求" in content
+    assert "G-->>U:" in content
+    assert "Note over" not in content
 
 
 def test_sample_project_is_a_classroom_ready_multimodule_crud_demo(tmp_path: Path) -> None:
@@ -291,8 +368,8 @@ def test_sample_project_is_a_classroom_ready_multimodule_crud_demo(tmp_path: Pat
     assert "更新研发任务" in api_docs
     assert "删除研发任务" in api_docs
     assert "完成研发任务" in api_docs
-    assert '"code": 1' in api_docs
-    assert '"message": "success"' in api_docs
+    assert '"code": 0' in api_docs
+    assert '"message": "string"' in api_docs
     assert "请求样例：** `/api/tasks/1`" in api_docs
 
 
@@ -318,6 +395,32 @@ def test_large_architecture_groups_modules_by_role() -> None:
     assert "protocol-0（协议适配）" in diagram
     assert "layer_business --> layer_data" in diagram
     assert diagram.count("protocol-") < 10
+
+
+def test_architecture_evidence_comments_include_layer_and_module() -> None:
+    modules = [
+        ProjectModuleInsight(
+            "admin-ui", "界面", 2,
+            evidence_paths=[
+                "admin-ui/src/main/index.html",
+                "admin-ui/src/main/app.js",
+            ],
+        ),
+        ProjectModuleInsight(
+            "core-service", "核心", 1,
+            evidence_paths=["core-service/src/main/TaskService.java"],
+        ),
+        ProjectModuleInsight(
+            "data-repository", "持久化", 1,
+            evidence_paths=["data-repository/src/main/TaskRepository.java"],
+        ),
+    ]
+
+    diagram = render_architecture(ProjectInsight("Java", modules=modules))
+
+    assert "%% evidence: 客户端层 / admin-ui（界面） / admin-ui/src/main/index.html" in diagram
+    assert "%% evidence: 业务服务层 / core-service（核心） / core-service/src/main/TaskService.java" in diagram
+    assert "%% evidence: 数据层 / data-repository（持久化） / data-repository/src/main/TaskRepository.java" in diagram
 
 
 def test_api_doc_fallback_titles_use_resource_and_crud_semantics() -> None:
