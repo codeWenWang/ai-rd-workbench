@@ -38,6 +38,10 @@ class ProjectCreate(BaseModel):
     repository_url: str = Field(default="", max_length=1000)
 
 
+class ProjectUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=300)
+
+
 @router.post("")
 def create_project(payload: ProjectCreate, container: AppContainer = Depends(get_container)):
     return serialize(container.project_use_case.create(
@@ -60,6 +64,15 @@ def get_project(project_id: str, container: AppContainer = Depends(get_container
     if not project:
         raise ResourceNotFound("project not found")
     return serialize(project)
+
+
+@router.patch("/{project_id}")
+def update_project(
+    project_id: str,
+    payload: ProjectUpdate,
+    container: AppContainer = Depends(get_container),
+):
+    return serialize(container.project_use_case.update(project_id, name=payload.name))
 
 
 @router.delete("/{project_id}")

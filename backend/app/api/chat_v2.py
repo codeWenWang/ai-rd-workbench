@@ -17,6 +17,7 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     project_id: str | None = None
     model_id: str | None = None
+    retry_message_id: str | None = None
 
 
 class ConversationPatch(BaseModel):
@@ -38,7 +39,11 @@ def create_session(
 
 @router.post("/api/chat")
 async def chat(request: ChatRequest, container: AppContainer = Depends(get_container)):
-    return await container.chat_use_case.chat(request.message, request.session_id)
+    return await container.chat_use_case.chat(
+        request.message,
+        request.session_id,
+        retry_message_id=request.retry_message_id,
+    )
 
 
 @router.post("/api/chat/stream")
@@ -50,6 +55,7 @@ async def stream_chat(request: ChatRequest, container: AppContainer = Depends(ge
                 request.session_id,
                 project_id=request.project_id,
                 model_id=request.model_id,
+                retry_message_id=request.retry_message_id,
             ):
                 yield _event(item["event"], item["data"])
         except Exception as exc:

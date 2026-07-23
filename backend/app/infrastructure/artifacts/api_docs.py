@@ -7,7 +7,7 @@ from pathlib import PurePosixPath
 from urllib.parse import quote
 
 
-ALLOWED_METHODS = {"GET", "POST", "PUT", "DELETE"}
+ALLOWED_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 UNKNOWN = object()
 
 
@@ -69,7 +69,7 @@ def render_api_docs(project, insight, files=None) -> str:
         "## 1. 接口说明", "",
     ]
     if not documents:
-        lines.append("当前静态分析未识别到 GET、POST、PUT、DELETE 接口。")
+        lines.append("当前静态分析未识别到 GET、POST、PUT、PATCH、DELETE 接口。")
         return "\n".join(lines)
 
     for index, document in enumerate(documents, start=1):
@@ -85,7 +85,7 @@ def _endpoint_document(endpoint, source, models: dict[str, JavaModel]) -> ApiEnd
         ]
         request_body = (
             {"field": "string"}
-            if endpoint.method in {"POST", "PUT"} else UNKNOWN
+            if endpoint.method in {"POST", "PUT", "PATCH"} else UNKNOWN
         )
         return ApiEndpointDoc(
             title=_fallback_title(endpoint.handler, endpoint.method, endpoint.path),
@@ -290,6 +290,9 @@ def _path_example(path: str, parameters: list[ApiParameter]) -> str:
 
 
 def _endpoint_title(context: str, handler: str, method: str, path: str) -> str:
+    semantic = _rest_semantic_title(method, path)
+    if semantic:
+        return semantic
     operation = re.search(r"@Operation\s*\([^)]*summary\s*=\s*['\"]([^'\"]+)['\"]", context, re.S)
     if operation:
         return operation.group(1).strip()
@@ -309,6 +312,9 @@ def _endpoint_title(context: str, handler: str, method: str, path: str) -> str:
 
 
 def _fallback_title(handler: str, method: str, path: str) -> str:
+    semantic = _rest_semantic_title(method, path)
+    if semantic:
+        return semantic
     name = handler.rsplit(".", 1)[-1]
     normalized_name = name.casefold()
     resource = _path_resource(path)
@@ -327,6 +333,74 @@ def _fallback_title(handler: str, method: str, path: str) -> str:
     if method == "GET":
         return f"{words} 查询" if words else "查询"
     return f"{words} 操作" if words else f"{method} 操作"
+
+
+_RESOURCE_LABELS = {
+    "user": "用户",
+    "users": "用户",
+    "category": "分类",
+    "categories": "分类",
+    "dish": "菜品",
+    "dishes": "菜品",
+    "setmeal": "套餐",
+    "setmeals": "套餐",
+    "employee": "员工",
+    "employees": "员工",
+    "order": "订单",
+    "orders": "订单",
+    "customer": "客户",
+    "customers": "客户",
+    "address": "地址",
+    "addresses": "地址",
+}
+_ACTION_LABELS = {
+    "pay": "支付",
+    "payment": "支付",
+    "cancel": "取消",
+    "confirm": "确认",
+    "submit": "提交",
+    "login": "登录",
+    "logout": "退出登录",
+    "check": "校验",
+}
+
+
+def _rest_semantic_title(method: str, path: str) -> str:
+    """Use HTTP resource shape for stable, human-readable endpoint names."""
+    method = method.upper()
+    segments = [item for item in path.strip("/").split("/") if item and item not in {"*", "**"}]
+    values = [item for item in segments if not item.startswith("{")]
+    if not values:
+        return ""
+    last = values[-1].casefold()
+    if last in {"item", "items", "detail", "details"} and len(values) >= 2:
+        parent = _RESOURCE_LABELS.get(values[-2].casefold())
+        if parent:
+            return f"查询{parent}下商品明细"
+    action = _ACTION_LABELS.get(last)
+    if action and len(values) >= 2:
+        resource = _RESOURCE_LABELS.get(values[-2].casefold())
+        if resource:
+            return f"{resource}{action}（动作型资源）"
+    resource_key = next(
+        (item.casefold() for item in reversed(values) if item.casefold() in _RESOURCE_LABELS),
+        "",
+    )
+    resource = _RESOURCE_LABELS.get(resource_key)
+    if not resource:
+        return ""
+    has_path_parameter = any(item.startswith("{") for item in segments)
+    if method == "GET":
+        return f"查询单个{resource}" if has_path_parameter else f"查询{resource}列表"
+    if method == "POST":
+        return f"创建{resource}"
+    if method == "PUT":
+        return f"修改{resource}（全量）"
+    if method == "PATCH":
+        return f"局部修改{resource}"
+    if method == "DELETE":
+        return f"删除{resource}"
+    return ""
 
 
 def _path_resource(path: str) -> str:

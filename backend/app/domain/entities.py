@@ -203,6 +203,24 @@ class ProjectScanSummary:
 
 
 @dataclass(slots=True)
+class ImprovementTask:
+    id: str
+    project_id: str
+    title: str
+    goal: str
+    status: str = "planned"
+    plan: dict = field(default_factory=dict)
+    acceptance_criteria: list[str] = field(default_factory=list)
+    completed_step_ids: list[str] = field(default_factory=list)
+    agent_prompt: str = ""
+    baseline_revision: str | None = None
+    baseline_hashes: dict[str, str] = field(default_factory=dict)
+    review: dict = field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+@dataclass(slots=True)
 class ProjectChunk:
     id: str
     project_id: str

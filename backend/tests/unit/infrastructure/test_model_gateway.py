@@ -5,6 +5,7 @@ from app.domain.entities import MessageRole, ModelMessage
 from app.infrastructure.db.repositories import SqliteModelProviderRepository
 from app.infrastructure.db.session import Database
 from app.infrastructure.llm.gateway import ModelGateway
+from app.infrastructure.llm.dashscope import DashScopeChatModel
 from app.infrastructure.security.secrets import LocalSecretStore
 
 
@@ -108,3 +109,19 @@ def test_model_provider_can_be_edited_without_replacing_existing_key(tmp_path: P
     assert updated.model_name == "deepseek-v4"
     assert updated.has_api_key is True
     assert secrets.get(provider.secret_ref) == "sk-provider-secret"
+
+
+async def test_dashscope_stream_error_is_readable_and_actionable() -> None:
+    class BrokenClient:
+        async def astream(self, messages):
+            raise RuntimeError("upstream unavailable")
+            yield
+
+    model = DashScopeChatModel(type("Settings", (), {})())
+    model._client = BrokenClient()
+
+    try:
+        async for _ in model.astream([ModelMessage(MessageRole.USER, "测试")]):
+            pass
+    except Exception as exc:
+        assert str(exc) == "模型流式连接失败，请检查模型配置或稍后重试"

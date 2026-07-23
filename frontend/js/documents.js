@@ -1,4 +1,4 @@
-import { api, errorText, listFrom } from './api.js?v=20260721.7';
+import { api, errorText, listFrom } from './api.js?v=20260723.2';
 
 let ui;
 let documents = [];
@@ -7,8 +7,19 @@ const el = id => document.getElementById(id);
 const value = (obj, ...keys) => keys.map(key => obj?.[key]).find(item => item !== undefined && item !== null);
 const statusLabels = { pending: '等待中', indexing: '索引中', indexed: '已索引', failed: '失败', deleting: '删除中' };
 const KNOWLEDGE_CATEGORIES = [
-  'general', 'backend', 'frontend', 'fullstack', 'architecture', 'devops', 'testing',
-].map(category => [category, category]);
+  ['general', '通用'],
+  ['backend', '后端开发'],
+  ['frontend', '前端开发'],
+  ['fullstack', '全栈开发'],
+  ['architecture', '系统架构'],
+  ['devops', '运维部署'],
+  ['testing', '软件测试'],
+];
+const categoryLabels = Object.fromEntries(KNOWLEDGE_CATEGORIES);
+
+function categoryLabel(category) {
+  return categoryLabels[category] || category || categoryLabels.general;
+}
 
 function categoryOptions(current = '') {
   const options = [...KNOWLEDGE_CATEGORIES];
@@ -26,7 +37,7 @@ function render() {
     const id = value(doc, 'id', 'document_id');
     const status = value(doc, 'status') || 'pending';
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><span class="cell-title">${ui.escape(value(doc, 'title', 'source_name') || '未命名文档')}</span><span class="cell-subtitle">${ui.escape(value(doc, 'source_name', 'error_message') || id)}</span></td><td>${ui.escape(value(doc, 'category') || 'general')}</td><td>${value(doc, 'source_type') === 'pdf' ? 'PDF' : '文本'}</td><td><span class="status-pill ${ui.escape(status)}">${statusLabels[status] || status}</span></td><td>${ui.escape(ui.formatTime(value(doc, 'updated_at', 'created_at')))}</td><td><div class="row-actions"><button data-action="view">查看</button><button data-action="edit">编辑</button><button data-action="reindex" ${['indexing','deleting'].includes(status) ? 'disabled' : ''}>重建</button><button data-action="delete" class="danger" ${status === 'deleting' ? 'disabled' : ''}>删除</button></div></td>`;
+    tr.innerHTML = `<td><span class="cell-title">${ui.escape(value(doc, 'title', 'source_name') || '未命名文档')}</span><span class="cell-subtitle">${ui.escape(value(doc, 'source_name', 'error_message') || id)}</span></td><td>${ui.escape(categoryLabel(value(doc, 'category')))}</td><td>${value(doc, 'source_type') === 'pdf' ? 'PDF' : '文本'}</td><td><span class="status-pill ${ui.escape(status)}">${statusLabels[status] || status}</span></td><td>${ui.escape(ui.formatTime(value(doc, 'updated_at', 'created_at')))}</td><td><div class="row-actions"><button data-action="view">查看</button><button data-action="edit">编辑</button><button data-action="reindex" ${['indexing','deleting'].includes(status) ? 'disabled' : ''}>重建</button><button data-action="delete" class="danger" ${status === 'deleting' ? 'disabled' : ''}>删除</button></div></td>`;
     tr.addEventListener('click', event => {
       const action = event.target.closest('button')?.dataset.action;
       if (action === 'view') viewDocument(id);
@@ -41,7 +52,7 @@ function render() {
     ...documents.map(doc => value(doc, 'category')).filter(Boolean),
   ])].sort();
   const select = el('document-category'); const current = select.value;
-  select.innerHTML = '<option value="">全部分类</option>' + categories.map(item => `<option value="${ui.escape(item)}">${ui.escape(item)}</option>`).join('');
+  select.innerHTML = '<option value="">全部分类</option>' + categories.map(item => `<option value="${ui.escape(item)}">${ui.escape(categoryLabel(item))}</option>`).join('');
   select.value = current;
 }
 
@@ -60,7 +71,7 @@ async function viewDocument(id) {
   ui.openDrawer({ eyebrow: '知识文档', title: '正在加载', html: '<div class="loading-line">正在读取文档…</div>' });
   try {
     const payload = await api.document(id); const doc = payload.document || payload; const chunks = chunksFrom(payload);
-    const fields = `<div class="drawer-fields"><div><span>分类</span><strong>${ui.escape(value(doc,'category') || 'general')}</strong></div><div><span>状态</span><strong>${ui.escape(statusLabels[value(doc,'status')] || value(doc,'status') || '未知')}</strong></div><div><span>来源</span><strong>${ui.escape(value(doc,'source_name') || '文本录入')}</strong></div><div><span>片段数</span><strong>${chunks.length || value(doc,'chunk_count') || 0}</strong></div></div>`;
+    const fields = `<div class="drawer-fields"><div><span>分类</span><strong>${ui.escape(categoryLabel(value(doc,'category')))}</strong></div><div><span>状态</span><strong>${ui.escape(statusLabels[value(doc,'status')] || value(doc,'status') || '未知')}</strong></div><div><span>来源</span><strong>${ui.escape(value(doc,'source_name') || '文本录入')}</strong></div><div><span>片段数</span><strong>${chunks.length || value(doc,'chunk_count') || 0}</strong></div></div>`;
     const error = value(doc, 'error_message') ? `<div class="error-box">${ui.escape(doc.error_message)}</div>` : '';
     const preview = chunks.length ? chunks.map((chunk,index) => `<div class="chunk"><small>片段 ${value(chunk,'chunk_index') ?? index + 1}${value(chunk,'page_number') ? ` · 第 ${chunk.page_number} 页` : ''}</small>${ui.escape(value(chunk,'content','text') || '')}</div>`).join('') : '<div class="empty-state"><span>暂无可预览片段</span></div>';
     ui.openDrawer({ eyebrow: '知识文档', title: value(doc,'title','source_name') || '文档详情', html: `<div class="drawer-section"><h3>文档信息</h3>${fields}${error}</div><div class="drawer-section"><h3>片段预览</h3>${preview}</div>` });

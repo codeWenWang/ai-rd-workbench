@@ -27,7 +27,7 @@ assert.deepEqual(parsed.events, [
 assert.equal(parsed.remainder, 'event: token\ndata: {"token":"未完成');
 
 for (const name of [
-  'projects', 'createProject', 'scanProject', 'projectFiles',
+  'projects', 'createProject', 'updateProject', 'scanProject', 'projectFiles',
   'artifacts', 'generateArtifact', 'modelProviders',
   'createModelProvider', 'updateModelProvider', 'deleteModelProvider', 'compareModels',
 ]) assert.equal(typeof api[name], 'function', `${name} API helper missing`);

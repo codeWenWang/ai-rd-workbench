@@ -56,6 +56,26 @@ class ProjectFileModel(Base):
     __table_args__ = (UniqueConstraint("project_id", "relative_path"),)
 
 
+class ImprovementTaskModel(Base):
+    __tablename__ = "improvement_tasks"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(300))
+    goal: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="planned", index=True)
+    plan_json: Mapped[str] = mapped_column(Text, default="{}")
+    acceptance_criteria_json: Mapped[str] = mapped_column(Text, default="[]")
+    completed_step_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    agent_prompt: Mapped[str] = mapped_column(Text, default="")
+    baseline_revision: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    baseline_hashes_json: Mapped[str] = mapped_column(Text, default="{}")
+    review_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+
 class ProjectSymbolModel(Base):
     __tablename__ = "project_symbols"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

@@ -503,6 +503,14 @@ test('knowledge categories are fixed choices and project files use a separate pa
   for (const category of ['general', 'backend', 'frontend', 'fullstack', 'architecture', 'devops', 'testing']) {
     assert.match(documentsSource, new RegExp(`['"]${category}['"]`));
   }
+  assert.match(documentsSource, /'general', '通用'/);
+  assert.match(documentsSource, /'backend', '后端开发'/);
+  assert.match(documentsSource, /'frontend', '前端开发'/);
+  assert.match(documentsSource, /'fullstack', '全栈开发'/);
+  assert.match(documentsSource, /'architecture', '系统架构'/);
+  assert.match(documentsSource, /'devops', '运维部署'/);
+  assert.match(documentsSource, /'testing', '软件测试'/);
+  assert.match(documentsSource, /function categoryLabel/);
   assert.match(documentsSource, /name:\s*['"]category['"][^\n]*type:\s*['"]select['"]/);
   assert.match(html, /class="[^"]*project-files-panel[^"]*"[\s\S]*?<h2>项目文件<\/h2>/);
   assert.match(css, /\.project-files-panel\s*\{/);
@@ -549,6 +557,103 @@ test('recent conversations render source, project, and daily collapsible groups'
   assert.match(css, /\.project-source-group\.collapsed \.project-source-panel/);
   assert.match(css, /\.project-history-group\.collapsed \.project-conversation-panel/);
   assert.match(css, /\.daily-history-group\.collapsed \.daily-conversation-panel/);
+});
+
+
+test('project guide recognizes sky take-out as a food delivery system', async () => {
+  const projectsSource = await readFile(new URL('./js/projects.js', import.meta.url), 'utf8');
+
+  assert.match(projectsSource, /sky\[-_ \]\?take\[-_ \]\?out/);
+  assert.match(projectsSource, /餐饮门店的外卖管理系统/);
+  assert.match(projectsSource, /浏览菜品与套餐/);
+  assert.ok(
+    projectsSource.indexOf('餐饮门店的外卖管理系统') < projectsSource.indexOf('图书借阅场景'),
+    'strong food-delivery signals must be checked before incidental library keywords',
+  );
+});
+
+
+test('project files open full content in the existing detail drawer', async () => {
+  const projectsSource = await readFile(new URL('./js/projects.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.match(projectsSource, /data-file-path/);
+  assert.match(projectsSource, /async function showProjectFile/);
+  assert.match(projectsSource, /api\.projectFile/);
+  assert.match(projectsSource, /ui\.openDrawer/);
+  assert.match(css, /\.file-tree-file:focus-visible/);
+});
+
+
+test('project conversation groups expose a pencil rename action', async () => {
+  const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
+  const apiSource = await readFile(new URL('./js/api.js', import.meta.url), 'utf8');
+
+  assert.match(chatSource, /function renameProject/);
+  assert.match(chatSource, /编辑项目名称/);
+  assert.match(chatSource, /project-rename-button/);
+  assert.match(apiSource, /updateProject:/);
+});
+
+
+test('assistant citations are collapsed by default behind a source disclosure', async () => {
+  const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.match(chatSource, /citation-disclosure/);
+  assert.match(chatSource, /document\.createElement\('details'\)/);
+  assert.match(chatSource, /引用来源（\$\{message\.citations\.length\}）/);
+  assert.match(css, /\.citation-disclosure/);
+});
+
+
+test('top new conversation inherits the active conversation project', async () => {
+  const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
+
+  assert.match(
+    chatSource,
+    /new-conversation[^\n]*addEventListener[^\n]*createConversation\(conversationContextProjectId\(\)/,
+  );
+});
+
+
+test('streaming chat exposes an abort signal and the send button becomes stop', async () => {
+  const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
+  const apiSource = await readFile(new URL('./js/api.js', import.meta.url), 'utf8');
+
+  assert.match(chatSource, /streamController/);
+  assert.match(chatSource, /stopGeneration/);
+  assert.match(chatSource, /停止生成/);
+  assert.match(apiSource, /streamChat\(body, onEvent, \{ signal \} = \{\}\)/);
+});
+
+
+test('stream warnings are deduplicated and technical retrieval degradation stays out of chat', async () => {
+  const chatSource = await readFile(new URL('./js/chat.js', import.meta.url), 'utf8');
+
+  assert.match(chatSource, /uniqueWarnings/);
+  assert.match(chatSource, /semantic_retrieval_unavailable:[ ]*''/);
+  assert.match(chatSource, /project_semantic_retrieval_unavailable:[ ]*''/);
+});
+
+
+test('project rename action only appears on hover or keyboard focus', async () => {
+  const css = await readFile(new URL('./css/style.css', import.meta.url), 'utf8');
+
+  assert.match(css, /\.project-rename-button\s*\{[^}]*opacity:\s*0/s);
+  assert.match(css, /project-history-header:hover \.project-rename-button/);
+  assert.match(css, /project-history-header:focus-within \.project-rename-button/);
+});
+
+
+test('generated diagrams show number version and drawing date metadata', async () => {
+  const artifactsSource = await readFile(new URL('./js/artifacts.js', import.meta.url), 'utf8');
+
+  assert.match(artifactsSource, /artifactNumbers/);
+  assert.match(artifactsSource, /图号/);
+  assert.match(artifactsSource, /版本/);
+  assert.match(artifactsSource, /绘制日期/);
+  assert.match(artifactsSource, /toLocaleDateString\('zh-CN'/);
 });
 
 

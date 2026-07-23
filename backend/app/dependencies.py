@@ -6,6 +6,7 @@ from fastapi import Request
 from app.application.chat import ChatUseCase
 from app.application.documents import DocumentUseCase
 from app.application.memories import MemoryUseCase
+from app.application.improvement_tasks import ImprovementTaskUseCase
 from app.application.artifacts import ArtifactUseCase
 from app.application.models import ModelProviderUseCase
 from app.application.project_analysis import ProjectAnalysisUseCase
@@ -17,6 +18,7 @@ from app.infrastructure.db.repositories import (
     SqliteConversationRepository,
     SqliteDocumentRepository,
     SqliteMemoryRepository,
+    SqliteImprovementTaskRepository,
     SqliteMigrationRepository,
     SqliteModelProviderRepository,
     SqliteProjectAnalysisRepository,
@@ -47,6 +49,9 @@ class AppContainer:
         self.migrations = SqliteMigrationRepository(self.database.session_factory)
         self.projects = SqliteProjectRepository(self.database.session_factory)
         self.project_analysis = SqliteProjectAnalysisRepository(self.database.session_factory)
+        self.improvement_tasks = SqliteImprovementTaskRepository(
+            self.database.session_factory
+        )
         self.model_providers = SqliteModelProviderRepository(self.database.session_factory)
         self.secret_store = LocalSecretStore(_data_dir(self.settings.database_url))
         self.remote_git = RemoteGitRepositoryManager(
@@ -109,6 +114,18 @@ class AppContainer:
     @cached_property
     def artifact_use_case(self):
         return ArtifactUseCase(self.projects, self.project_analysis)
+
+    @cached_property
+    def improvement_task_use_case(self):
+        return ImprovementTaskUseCase(
+            self.improvement_tasks,
+            self.projects,
+            self.project_analysis,
+            self.chat_model,
+            self.model_gateway,
+            self.project_analysis_use_case,
+            self.project_use_case,
+        )
 
     @cached_property
     def model_gateway(self):

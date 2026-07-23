@@ -1,4 +1,4 @@
-import { api, errorText, listFrom } from './api.js?v=20260721.7';
+import { api, errorText, listFrom } from './api.js?v=20260723.2';
 
 let ui;
 const el = id => document.getElementById(id);
@@ -67,7 +67,7 @@ export function buildProjectGuide(project, files = [], routes = []) {
     .filter(part => part && !/^\{.*\}$/.test(part) && !/^\d+$/.test(part) && !/^(api|v\d+|internal)$/i.test(part)))]
     .slice(0, 5);
   const resourceText = routeResources.join('、');
-  const projectText = `${project?.name || ''} ${project?.source_uri || ''} ${files.map(file => file.relative_path || '').join(' ')} ${routes.map(route => route.path || '').join(' ')}`.toLowerCase();
+  const projectText = `${project?.name || ''} ${project?.root_path || ''} ${project?.source_uri || ''} ${files.map(file => file.relative_path || '').join(' ')} ${routes.map(route => route.path || '').join(' ')}`.toLowerCase();
   const businessFunctions = inferBusinessFunctions(projectText, resourceText, routes, files);
   const summary = `${project?.name || '当前项目'} 是一个以 ${stackText} 构建的源码项目。平台已扫描 ${files.length} 个文件${routes.length ? `并识别 ${routes.length} 个接口` : ''}。${businessFunctions[0].intro}`;
 
@@ -94,6 +94,13 @@ export function buildProjectGuide(project, files = [], routes = []) {
 
 function inferBusinessFunctions(projectText, resourceText, routes, files) {
   const has = pattern => pattern.test(projectText);
+  if (has(/sky[-_ ]?take[-_ ]?out|take[-_ ]?out|外卖|餐饮|food[-_ ]?delivery|restaurant|rider|setmeal|dish/)) {
+    return [
+      { role: '用户端', description: '用户可以浏览菜品与套餐、加入购物车、提交订单、在线支付，并查看配送状态和历史订单。', intro: '它是一个面向餐饮门店的外卖管理系统，覆盖顾客点餐、支付、配送和评价等完整流程。' },
+      { role: '管理端', description: '管理员统一维护员工、菜品、套餐、分类和用户，处理订单、营业状态与售后信息。', intro: '' },
+      { role: '运维端', description: '系统记录关键操作日志，统计订单、营业额和配送数据，帮助门店定位异常并复盘经营情况。', intro: '' },
+    ];
+  }
   if (has(/book|library|borrow|图书|图书馆|借阅|归还/)) {
     return [
       { role: '用户端', description: '用户可以查找图书、查看详情、提交借阅和归还操作，并查看自己的借阅记录与逾期信息。', intro: '它面向图书借阅场景，把查书、借阅、归还和借阅记录集中到一个系统中。' },
@@ -184,8 +191,24 @@ function renderTreeNodes(nodes, depth = 0) {
         <div class="file-tree-children">${renderTreeNodes(node.children, depth + 1)}</div>
       </details>`;
     }
-    return `<div class="file-tree-file" title="${ui.escape(node.path)}"><span class="file-glyph" aria-hidden="true"></span><strong>${ui.escape(node.name)}</strong><small>${ui.escape(node.language)} · ${node.sizeBytes} B</small></div>`;
+    return `<button type="button" class="file-tree-file" data-file-path="${ui.escape(node.path)}" title="查看 ${ui.escape(node.path)}"><span class="file-glyph" aria-hidden="true"></span><strong>${ui.escape(node.name)}</strong><small>${ui.escape(node.language)} · ${node.sizeBytes} B</small></button>`;
   }).join('');
+}
+
+async function showProjectFile(path) {
+  const file = projectFileMetadata(path);
+  if (!file || !state.activeId) return;
+  try {
+    const detail = await api.projectFile(state.activeId, file.id);
+    ui.openDrawer({
+      eyebrow: `项目文件 · ${detail.language || file.language || 'text'}`,
+      title: detail.relative_path || file.relative_path,
+      wide: true,
+      html: `<div class="source-text source-code">${ui.escape(detail.content || '')}</div>`,
+    });
+  } catch (error) {
+    ui.alert('project-alert', errorText(error));
+  }
 }
 
 function renderProjectSelector() {
@@ -234,6 +257,9 @@ function renderOverview() {
   el('project-files').innerHTML = state.files.length
     ? renderTreeNodes(buildProjectFileTree(state.files))
     : '<div class="empty-state"><strong>还没有项目文件</strong><span>选择项目并执行扫描。</span></div>';
+  el('project-files').querySelectorAll('[data-file-path]').forEach(row => {
+    row.addEventListener('click', () => showProjectFile(row.dataset.filePath));
+  });
 }
 
 async function loadFiles() {
@@ -349,5 +375,6 @@ export async function initProjects(sharedUi) {
   el('scan-project').addEventListener('click', scanProject);
   el('remove-project').addEventListener('click', removeProject);
   el('overview-project-selector').addEventListener('change', event => selectProject(event.target.value));
+  ui.on('projects:refresh', () => loadProjects());
   await loadProjects();
 }

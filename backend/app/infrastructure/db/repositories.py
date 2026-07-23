@@ -19,6 +19,7 @@ from app.domain.entities import (
     Conversation,
     ConversationStatus,
     KnowledgeDocument,
+    ImprovementTask,
     Memory,
     MemoryCandidate,
     MemoryKind,
@@ -44,6 +45,7 @@ from app.infrastructure.db.models import (
     ChunkModel,
     ConversationModel,
     DocumentModel,
+    ImprovementTaskModel,
     MemoryModel,
     MessageModel,
     ModelProviderModel,
@@ -180,6 +182,15 @@ class SqliteProjectRepository(RepositoryBase):
         with self.sessions() as session:
             rows = session.scalars(select(ProjectModel).order_by(ProjectModel.created_at, ProjectModel.id))
             return [self._entity(row) for row in rows]
+
+    def update(self, project_id: str, *, name: str) -> Project:
+        with self.sessions.begin() as session:
+            row = session.get(ProjectModel, project_id)
+            if not row:
+                raise ResourceNotFound("project not found")
+            row.name = name
+            row.updated_at = _now()
+        return self._entity(row)
 
     def delete(self, project_id: str) -> None:
         with self.sessions.begin() as session:
@@ -386,6 +397,7 @@ class SqliteProjectAnalysisRepository(RepositoryBase):
                 row.content, row.start_line, row.end_line, row.vector_id,
             ) for row in rows]
 
+
     def list_overview_chunks(self, project_id: str, limit: int = 4) -> list[ProjectChunk]:
         important_names = (
             "readme.md", "readme.rst", "readme.txt", "pom.xml", "package.json",
@@ -474,6 +486,107 @@ class SqliteProjectAnalysisRepository(RepositoryBase):
         )
 
 
+class SqliteImprovementTaskRepository(RepositoryBase):
+    def create(
+        self,
+        *,
+        project_id: str,
+        title: str,
+        goal: str,
+        plan: dict,
+        acceptance_criteria: list[str],
+        agent_prompt: str,
+        baseline_revision: str | None,
+        baseline_hashes: dict[str, str],
+    ) -> ImprovementTask:
+        with self.sessions.begin() as session:
+            if not session.get(ProjectModel, project_id):
+                raise ResourceNotFound("project not found")
+            row = ImprovementTaskModel(
+                id=_id(),
+                project_id=project_id,
+                title=title,
+                goal=goal,
+                plan_json=json.dumps(plan, ensure_ascii=False),
+                acceptance_criteria_json=json.dumps(
+                    acceptance_criteria, ensure_ascii=False
+                ),
+                agent_prompt=agent_prompt,
+                baseline_revision=baseline_revision,
+                baseline_hashes_json=json.dumps(baseline_hashes, ensure_ascii=False),
+            )
+            session.add(row)
+        return self._entity(row)
+
+    def get(self, task_id: str) -> ImprovementTask | None:
+        with self.sessions() as session:
+            row = session.get(ImprovementTaskModel, task_id)
+            return self._entity(row) if row else None
+
+    def list(self, *, project_id: str | None = None) -> list[ImprovementTask]:
+        with self.sessions() as session:
+            query = select(ImprovementTaskModel)
+            if project_id:
+                query = query.where(ImprovementTaskModel.project_id == project_id)
+            rows = session.scalars(
+                query.order_by(
+                    ImprovementTaskModel.updated_at.desc(),
+                    ImprovementTaskModel.created_at.desc(),
+                )
+            )
+            return [self._entity(row) for row in rows]
+
+    def update(self, task_id: str, **changes) -> ImprovementTask:
+        with self.sessions.begin() as session:
+            row = session.get(ImprovementTaskModel, task_id)
+            if not row:
+                raise ResourceNotFound("improvement task not found")
+            for field in ("title", "status", "agent_prompt"):
+                if field in changes and changes[field] is not None:
+                    setattr(row, field, changes[field])
+            json_fields = {
+                "plan": "plan_json",
+                "acceptance_criteria": "acceptance_criteria_json",
+                "completed_step_ids": "completed_step_ids_json",
+                "review": "review_json",
+            }
+            for field, column in json_fields.items():
+                if field in changes and changes[field] is not None:
+                    setattr(
+                        row,
+                        column,
+                        json.dumps(changes[field], ensure_ascii=False),
+                    )
+            row.updated_at = _now()
+        return self._entity(row)
+
+    def delete(self, task_id: str) -> None:
+        with self.sessions.begin() as session:
+            row = session.get(ImprovementTaskModel, task_id)
+            if not row:
+                raise ResourceNotFound("improvement task not found")
+            session.delete(row)
+
+    @staticmethod
+    def _entity(row: ImprovementTaskModel) -> ImprovementTask:
+        return ImprovementTask(
+            id=row.id,
+            project_id=row.project_id,
+            title=row.title,
+            goal=row.goal,
+            status=row.status,
+            plan=json.loads(row.plan_json or "{}"),
+            acceptance_criteria=json.loads(row.acceptance_criteria_json or "[]"),
+            completed_step_ids=json.loads(row.completed_step_ids_json or "[]"),
+            agent_prompt=row.agent_prompt or "",
+            baseline_revision=row.baseline_revision,
+            baseline_hashes=json.loads(row.baseline_hashes_json or "{}"),
+            review=json.loads(row.review_json or "{}"),
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+
 class SqliteConversationRepository(RepositoryBase):
     def create(self, title: str = "New conversation", project_id: str | None = None) -> Conversation:
         with self.sessions.begin() as session:
@@ -483,6 +596,45 @@ class SqliteConversationRepository(RepositoryBase):
                 project_id=project_id,
             )
             session.add(row)
+        return self._entity(row)
+
+    def create_or_reuse_empty(
+        self, title: str = "New conversation", project_id: str | None = None
+    ) -> Conversation:
+        with self.sessions.begin() as session:
+            project_filter = (
+                ConversationModel.project_id.is_(None)
+                if project_id is None
+                else ConversationModel.project_id == project_id
+            )
+            row = session.scalar(
+                select(ConversationModel)
+                .where(
+                    ConversationModel.status == ConversationStatus.ACTIVE.value,
+                    project_filter,
+                )
+                .order_by(ConversationModel.updated_at.desc())
+                .limit(1)
+            )
+            now = _now()
+            has_messages = bool(row and session.scalar(
+                select(MessageModel.id)
+                .where(MessageModel.conversation_id == row.id)
+                .limit(1)
+            ))
+            if row and not has_messages:
+                row.title = title.strip() or "New conversation"
+                row.created_at = now
+                row.updated_at = now
+            else:
+                row = ConversationModel(
+                    id=_id(),
+                    title=title.strip() or "New conversation",
+                    project_id=project_id,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(row)
         return self._entity(row)
 
     def get(self, conversation_id: str) -> Conversation | None:

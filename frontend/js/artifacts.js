@@ -1,5 +1,5 @@
-import { api, errorText, listFrom } from './api.js?v=20260721.7';
-import { activeProjectId, projectFileMetadata } from './projects.js?v=20260722.6';
+import { api, errorText, listFrom } from './api.js?v=20260723.2';
+import { activeProjectId, projectFileMetadata } from './projects.js?v=20260723.2';
 import { sourceSnippet } from './source-snippet.js?v=20260722.3';
 
 let ui;
@@ -137,9 +137,21 @@ function contentNode(view, artifact) {
     container.innerHTML = '<strong>尚未生成</strong><span>先扫描项目，再生成当前内容。</span>';
     return;
   }
+  const artifactNumbers = {
+    architecture: 'ARCH-01', flow: 'FLOW-01', sequence: 'SEQ-01', api_docs: 'API-01',
+  };
+  const drawingDate = artifact.updated_at || artifact.created_at;
+  const formattedDate = drawingDate
+    ? new Date(drawingDate).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+    : '未知';
   const meta = document.createElement('div');
   meta.className = 'artifact-meta';
-  meta.textContent = `${artifact.status === 'stale' ? '源码已变化，需要重新生成' : '当前版本'} · ${artifact.source_revision?.slice(0, 10) || ''}`;
+  meta.textContent = [
+    artifact.status === 'stale' ? '源码已变化，需要重新生成' : '当前版本',
+    '图号 ' + (artifactNumbers[view.dataset.artifactType] || 'DOC-01'),
+    '版本 ' + (artifact.source_revision?.slice(0, 10) || '未知'),
+    '绘制日期 ' + formattedDate,
+  ].join(' · ');
   container.append(meta);
   if (artifact.format === 'mermaid') {
     if (view.dataset.artifactType === 'sequence' && projectRoutes.length) {

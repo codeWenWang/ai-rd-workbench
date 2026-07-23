@@ -7,7 +7,11 @@ from app.domain.entities import (
     ModelMessage,
     ResourceType,
 )
-from app.domain.errors import ExternalServiceError
+from app.domain.errors import ExternalServiceError, ValidationError
+
+
+def _role_value(role) -> str:
+    return role.value if isinstance(role, MessageRole) else str(role)
 
 
 class ChatUseCase:
@@ -31,18 +35,26 @@ class ChatUseCase:
         self.model_gateway = model_gateway
 
     def create_session(self, project_id: str | None = None):
+        create_or_reuse = getattr(self.conversations, "create_or_reuse_empty", None)
+        if create_or_reuse:
+            return create_or_reuse("新对话", project_id=project_id)
         return self.conversations.create("新对话", project_id=project_id)
 
-    async def chat(self, message: str, session_id: str | None = None) -> dict:
+    async def chat(
+        self,
+        message: str,
+        session_id: str | None = None,
+        *,
+        retry_message_id: str | None = None,
+    ) -> dict:
         conversation = self.conversations.get(session_id) if session_id else None
         conversation = conversation or self.create_session()
         existing_messages = self.conversations.list_messages(conversation.id)
         if not existing_messages and conversation.title in {"New conversation", "新对话"}:
             conversation = self.conversations.rename(conversation.id, conversation_title(message))
-        user_message = self.conversations.add_message(conversation.id, role="user", content=message,
-                                                      status=MessageStatus.COMPLETED)
-        assistant = self.conversations.add_message(conversation.id, role="assistant", content="",
-                                                   status=MessageStatus.PENDING)
+        user_message, assistant = self._prepare_messages(
+            conversation.id, message, retry_message_id
+        )
         try:
             result = await self.graph.ainvoke({"query": message, "retry_count": 0, "warnings": []})
             completed = self.conversations.update_message(
@@ -70,6 +82,7 @@ class ChatUseCase:
         *,
         project_id: str | None = None,
         model_id: str | None = None,
+        retry_message_id: str | None = None,
     ):
         conversation = self.conversations.get(session_id) if session_id else None
         conversation = conversation or self.create_session(project_id)
@@ -78,17 +91,8 @@ class ChatUseCase:
             conversation = self.conversations.rename(
                 conversation.id, conversation_title(message)
             )
-        user_message = self.conversations.add_message(
-            conversation.id,
-            role="user",
-            content=message,
-            status=MessageStatus.COMPLETED,
-        )
-        assistant = self.conversations.add_message(
-            conversation.id,
-            role="assistant",
-            content="",
-            status=MessageStatus.PENDING,
+        user_message, assistant = self._prepare_messages(
+            conversation.id, message, retry_message_id
         )
         yield {
             "event": "session",
@@ -250,13 +254,74 @@ class ChatUseCase:
 
     async def _model_stream(self, model_id: str | None, messages):
         if model_id and self.model_gateway:
-            async for token in self.model_gateway.stream(model_id, messages):
-                yield token
+            emitted = False
+            try:
+                async for token in self.model_gateway.stream(model_id, messages):
+                    emitted = True
+                    yield token
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                if emitted:
+                    raise
+                yield await self.model_gateway.invoke(model_id, messages)
             return
         if not self.model:
             raise ExternalServiceError("model service unavailable")
-        async for token in self.model.astream(messages):
-            yield token
+        emitted = False
+        try:
+            async for token in self.model.astream(messages):
+                emitted = True
+                yield token
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            if emitted:
+                raise
+            yield await self.model.ainvoke(messages)
+
+    def _prepare_messages(self, conversation_id: str, message: str, retry_message_id: str | None):
+        messages = self.conversations.list_messages(conversation_id)
+        if not retry_message_id:
+            user_message = self.conversations.add_message(
+                conversation_id,
+                role="user",
+                content=message,
+                status=MessageStatus.COMPLETED,
+            )
+            assistant = self.conversations.add_message(
+                conversation_id,
+                role="assistant",
+                content="",
+                status=MessageStatus.PENDING,
+            )
+            return user_message, assistant
+
+        assistant_index = next(
+            (index for index, item in enumerate(messages) if item.id == retry_message_id),
+            -1,
+        )
+        if assistant_index < 0 or _role_value(messages[assistant_index].role) != MessageRole.ASSISTANT.value:
+            raise ValidationError("只能重试失败的助手回答")
+        assistant = messages[assistant_index]
+        if assistant.status not in {MessageStatus.FAILED, MessageStatus.CANCELLED}:
+            raise ValidationError("当前回答不需要重试")
+        user_message = next(
+            (item for item in reversed(messages[:assistant_index]) if _role_value(item.role) == MessageRole.USER.value),
+            None,
+        )
+        if user_message is None:
+            raise ValidationError("找不到需要重试的问题")
+        assistant = self.conversations.update_message(
+            assistant.id,
+            content="",
+            status=MessageStatus.PENDING,
+            error_code=None,
+            error_message=None,
+            citations=[],
+            warnings=[],
+        )
+        return user_message, assistant
 
     def _create_stream_candidate(
         self, message: str, conversation_id: str, message_id: str
@@ -286,7 +351,10 @@ def _stream_prompt(query, context) -> str:
     )
     return (
         "请用中文回答。优先依据提供的项目或知识上下文，不要编造源码事实。"
-        "如果上下文不足，请明确说明。\n\n上下文：\n"
+        "如果上下文不足，请明确说明。回答应简洁、专业、直接：不要使用 emoji、"
+        "装饰性图标、口号或夸张语气；不要为了排版滥用标题、粗体和分隔线；"
+        "需要表格时使用标准 Markdown 表格，每一行单独换行；不要输出 HTML 标签或 <br>。"
+        "短问题优先用短段落回答，确有并列信息时再使用列表。\n\n上下文：\n"
         + rendered
         + "\n\n问题：\n"
         + query

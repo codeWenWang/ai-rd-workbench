@@ -60,7 +60,9 @@ def make_nodes(model, retriever):
             "Answer the user in Chinese. Use only helpful retrieved context when relevant. "
             "For questions about the user's preferences, habits, decisions, or previously stated facts, "
             "prioritize LONG_TERM_MEMORY and do not replace it with project KNOWLEDGE. "
-            "Do not invent sources.\n\nContext:\n"
+            "Do not invent sources. Write in a concise, professional style. Do not use emoji, "
+            "decorative icons, slogans, raw HTML, or excessive headings and bold text. Use valid "
+            "Markdown tables with one row per line only when a table materially improves clarity.\n\nContext:\n"
             + rendered
             + "\n\nQuestion:\n"
             + state["query"]
@@ -79,7 +81,11 @@ def make_nodes(model, retriever):
         return {"answer": answer, "citations": citations}
 
     async def insufficient(state):
-        prompt = "请直接回答；如果信息不足，请明确说明不确定。问题：" + state["query"]
+        prompt = (
+            "请直接、简洁、专业地回答；如果信息不足，请明确说明不确定。"
+            "不要使用 emoji、装饰性图标、原始 HTML、过多标题或粗体。问题："
+            + state["query"]
+        )
         answer = await model.ainvoke([ModelMessage(MessageRole.USER, prompt)])
         return {"answer": answer, "citations": []}
 

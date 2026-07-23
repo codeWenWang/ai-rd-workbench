@@ -1,6 +1,6 @@
-import { api, errorText, listFrom, streamChat } from './api.js?v=20260721.7';
+import { api, errorText, listFrom, streamChat } from './api.js?v=20260723.2';
 import { groupWorkspaceConversations } from './conversation-groups.js?v=20260721.1';
-import { activeProjectId, allProjects } from './projects.js?v=20260722.6';
+import { activeProjectId, allProjects } from './projects.js?v=20260723.2';
 import { comparisonModelIds, selectedModelId } from './models.js?v=20260714.3';
 
 const stageNames = {
@@ -14,6 +14,7 @@ const state = {
   activeId: localStorage.getItem('conversation_id') || '',
   messages: [],
   sending: false,
+  streamController: null,
 };
 const expandedProjectIds = new Set();
 const expandedSourceTypes = new Set();
@@ -99,7 +100,21 @@ function projectHistoryGroup(groupData) {
   create.setAttribute('aria-label', `在${groupData.name}中新建对话`);
   create.textContent = '＋';
   create.addEventListener('click', () => createConversation(groupData.projectId, create));
-  header.append(toggle, create);
+  header.append(toggle);
+  if (groupData.project) {
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.className = 'icon-btn project-rename-button';
+    rename.title = '编辑项目名称';
+    rename.setAttribute('aria-label', `编辑项目名称${groupData.name}`);
+    rename.textContent = '✎';
+    rename.addEventListener('click', event => {
+      event.stopPropagation();
+      renameProject(groupData.project);
+    });
+    header.append(rename);
+  }
+  header.append(create);
 
   const panel = document.createElement('div');
   panel.className = 'project-conversation-panel';
@@ -228,6 +243,22 @@ function normalizeCitation(citation, index) {
   };
 }
 
+const warningLabels = {
+  semantic_retrieval_unavailable: '',
+  project_semantic_retrieval_unavailable: '',
+};
+
+function warningText(warning) {
+  const text = typeof warning === 'string'
+    ? warning
+    : value(warning, 'message', 'warning', 'code') || JSON.stringify(warning);
+  return Object.hasOwn(warningLabels, text) ? warningLabels[text] : text;
+}
+
+function uniqueWarnings(warnings) {
+  return [...new Set(listFrom(warnings || []).map(warningText).filter(Boolean))];
+}
+
 function normalizeMessage(message) {
   const metadata = value(message, 'metadata') || {};
   return {
@@ -236,7 +267,7 @@ function normalizeMessage(message) {
     content: value(message, 'content', 'answer', 'message') || '',
     status: value(message, 'status') || 'completed',
     citations: listFrom(value(message, 'citations', 'sources') || []).map(normalizeCitation),
-    warnings: listFrom(value(message, 'warnings') || []).map(w => typeof w === 'string' ? w : value(w, 'message', 'code') || JSON.stringify(w)),
+    warnings: uniqueWarnings(value(message, 'warnings') || []),
     error: value(message, 'error_message', 'error', 'message_error'),
     prompt: value(message, 'prompt', 'original_query'),
     metadata,
@@ -318,12 +349,22 @@ function messageNode(message) {
 
   const meta = document.createElement('div');
   meta.className = 'message-meta';
-  for (const citation of message.citations || []) {
-    const button = document.createElement('button');
-    button.className = 'citation-button';
-    button.textContent = `[${citation.id}] ${citation.title}${citation.page ? ` · 第 ${citation.page} 页` : ''}`;
-    button.addEventListener('click', () => showCitation(citation));
-    meta.append(button);
+  if (message.citations?.length) {
+    const disclosure = document.createElement('details');
+    disclosure.className = 'citation-disclosure';
+    const summary = document.createElement('summary');
+    summary.textContent = `引用来源（${message.citations.length}）`;
+    const sources = document.createElement('div');
+    sources.className = 'citation-list';
+    for (const citation of message.citations) {
+      const button = document.createElement('button');
+      button.className = 'citation-button';
+      button.textContent = `[${citation.id}] ${citation.title}${citation.page ? ` · 第 ${citation.page} 页` : ''}`;
+      button.addEventListener('click', () => showCitation(citation));
+      sources.append(button);
+    }
+    disclosure.append(summary, sources);
+    meta.append(disclosure);
   }
   for (const warning of message.warnings || []) {
     const box = document.createElement('div');
@@ -483,7 +524,7 @@ function applyStreamEvent(message, eventName, payload) {
     message.citations = citations.map(normalizeCitation);
     updateMessage(message);
   } else if (type === 'warning') {
-    message.warnings.push(typeof payload === 'string' ? payload : value(payload, 'message', 'warning', 'code') || '检索已降级');
+    message.warnings = uniqueWarnings([...message.warnings, warningText(payload)]);
     updateMessage(message);
   } else if (type === 'error') {
     message.error = typeof payload === 'string' ? payload : value(payload, 'message', 'error') || '回答失败';
@@ -492,37 +533,55 @@ function applyStreamEvent(message, eventName, payload) {
   } else if (type === 'done') {
     message.content ||= value(payload, 'answer', 'content') || '';
     message.citations = message.citations.length ? message.citations : listFrom(value(payload, 'citations') || []).map(normalizeCitation);
-    message.warnings.push(...listFrom(value(payload, 'warnings') || []).map(w => typeof w === 'string' ? w : w.message));
+    message.warnings = uniqueWarnings([...message.warnings, ...listFrom(value(payload, 'warnings') || [])]);
     message.status = message.error ? 'failed' : 'completed';
     updateMessage(message);
     setStage('done', false);
   }
 }
 
-async function postFallback(text, message) {
-  const payload = await api.chat({ message: text, session_id: state.activeId });
+async function postFallback(text, message, retryMessageId = null) {
+  const payload = await api.chat({
+    message: text,
+    session_id: state.activeId,
+    retry_message_id: retryMessageId,
+  });
   message.content = value(payload, 'answer', 'content', 'message') || '';
   message.citations = listFrom(value(payload, 'citations', 'sources') || []).map(normalizeCitation);
-  message.warnings = listFrom(value(payload, 'warnings') || []).map(w => typeof w === 'string' ? w : w.message);
+  message.warnings = uniqueWarnings(value(payload, 'warnings') || []);
   message.status = 'completed';
   updateMessage(message);
 }
 
-async function send(text) {
+async function send(text, { retryMessage = null } = {}) {
   if (!text.trim() || state.sending) return;
   state.sending = true;
-  ui.busy(el('send-message'), true);
+  let assistant = null;
   el('chat-input').disabled = true;
   try {
     const compareIds = comparisonModelIds();
     if (document.getElementById('compare-models').checked) {
+      ui.busy(el('send-message'), true);
       if (compareIds.length !== 2) throw new Error('模型对比需要选择两个不同的模型');
       await sendComparison(text, compareIds);
       return;
     }
+    state.streamController = new AbortController();
+    setSendButton(true);
     await ensureConversation();
-    state.messages.push(normalizeMessage({ role: 'user', content: text, status: 'completed', prompt: text }));
-    const assistant = appendAssistant();
+    if (retryMessage && state.messages.includes(retryMessage)) {
+      retryMessage.content = '';
+      retryMessage.status = 'pending';
+      retryMessage.error = '';
+      retryMessage.citations = [];
+      retryMessage.warnings = [];
+      retryMessage.prompt = text;
+      assistant = retryMessage;
+      renderMessages();
+    } else {
+      state.messages.push(normalizeMessage({ role: 'user', content: text, status: 'completed', prompt: text }));
+      assistant = appendAssistant();
+    }
     setStage('receive_query');
     try {
       await streamChat({
@@ -530,13 +589,16 @@ async function send(text) {
         session_id: state.activeId,
         project_id: conversationContextProjectId(),
         model_id: selectedModelId(),
-      }, (event, data) => applyStreamEvent(assistant, event, data));
+        retry_message_id: retryMessage?.id || null,
+      }, (event, data) => applyStreamEvent(assistant, event, data), {
+        signal: state.streamController.signal,
+      });
       if (assistant.status === 'pending') {
         assistant.status = 'completed';
         updateMessage(assistant);
       }
     } catch (error) {
-      if ([404, 405, 501].includes(error.status) || error.code === 'STREAM_UNAVAILABLE') await postFallback(text, assistant);
+      if ([404, 405, 501].includes(error.status) || error.code === 'STREAM_UNAVAILABLE') await postFallback(text, assistant, retryMessage?.id || null);
       else throw error;
     }
     setStage('done', false);
@@ -544,7 +606,16 @@ async function send(text) {
     renderConversations();
     ui.emit('memories:refresh');
   } catch (error) {
-    const assistant = state.messages.at(-1);
+    if (error.name === 'AbortError') {
+      if (assistant?.role === 'assistant') {
+        assistant.status = 'cancelled';
+        assistant.error = '';
+        assistant.content ||= '已停止生成';
+        updateMessage(assistant);
+      }
+      setStage('已停止', false);
+      return;
+    }
     if (assistant?.role === 'assistant') {
       assistant.status = 'failed';
       assistant.error = errorText(error);
@@ -554,7 +625,9 @@ async function send(text) {
     setStage('回答失败', false);
   } finally {
     state.sending = false;
+    state.streamController = null;
     ui.busy(el('send-message'), false);
+    setSendButton(false);
     el('chat-input').disabled = false;
     el('chat-input').focus();
   }
@@ -588,7 +661,7 @@ async function sendComparison(text, modelIds) {
   comparison.metadata = { type: 'model_comparison', items: listFrom(payload) };
   comparison.comparison = comparison.metadata.items;
   comparison.citations = listFrom(value(payload, 'citations') || []).map(normalizeCitation);
-  comparison.warnings = listFrom(value(payload, 'warnings') || []).map(item => typeof item === 'string' ? item : item.message);
+  comparison.warnings = uniqueWarnings(value(payload, 'warnings') || []);
   updateMessage(comparison);
   setStage('done', false);
   await loadConversations({ select: false });
@@ -599,7 +672,7 @@ function retryMessage(message) {
   const index = state.messages.indexOf(message);
   const previous = [...state.messages].slice(0, index).reverse().find(item => item.role === 'user');
   const prompt = message.prompt || previous?.content;
-  if (prompt) send(prompt);
+  if (prompt) send(prompt, { retryMessage: message });
 }
 
 async function renameConversation(item) {
@@ -614,6 +687,34 @@ async function renameConversation(item) {
     await api.renameConversation(id, result.title);
     await loadConversations({ select: false });
     renderConversations();
+  } catch (error) {
+    ui.alert('chat-alerts', errorText(error), 'error');
+  }
+}
+
+function setSendButton(stopping) {
+  const button = el('send-message');
+  button.type = stopping ? 'button' : 'submit';
+  button.classList.toggle('stop', stopping);
+  button.textContent = stopping ? '■' : '↑';
+  button.title = stopping ? '停止生成' : '发送';
+  button.setAttribute('aria-label', stopping ? '停止生成' : '发送消息');
+}
+
+function stopGeneration() {
+  state.streamController?.abort();
+}
+
+async function renameProject(project) {
+  const result = await ui.formDialog({
+    title: '编辑项目名称',
+    submitText: '保存',
+    fields: [{ name: 'name', label: '项目名称', value: project.name, required: true, maxlength: 300 }],
+  });
+  if (!result) return;
+  try {
+    await api.updateProject(project.id, { name: result.name });
+    ui.emit('projects:refresh');
   } catch (error) {
     ui.alert('chat-alerts', errorText(error), 'error');
   }
@@ -657,6 +758,11 @@ export async function initChat(sharedUi) {
       send(text);
     }
   });
+  el('send-message').addEventListener('click', event => {
+    if (!state.sending) return;
+    event.preventDefault();
+    stopGeneration();
+  });
   el('chat-input').addEventListener('input', resizeInput);
   el('chat-input').addEventListener('keydown', event => {
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
@@ -664,7 +770,7 @@ export async function initChat(sharedUi) {
       el('chat-form').requestSubmit();
     }
   });
-  el('new-conversation').addEventListener('click', () => createConversation('', el('new-conversation')));
+  el('new-conversation').addEventListener('click', () => createConversation(conversationContextProjectId(), el('new-conversation')));
   setProjectRootExpanded(projectRootExpanded);
   el('project-root-toggle').addEventListener('click', () => {
     setProjectRootExpanded(el('project-root-toggle').getAttribute('aria-expanded') !== 'true');

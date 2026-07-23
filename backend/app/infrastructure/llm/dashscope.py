@@ -31,7 +31,7 @@ class DashScopeChatModel:
         except ExternalServiceError:
             raise
         except Exception as exc:
-            raise ExternalServiceError("model service unavailable") from exc
+            raise ExternalServiceError("模型服务调用失败，请检查模型配置或稍后重试") from exc
 
     async def astream(self, messages: list[ModelMessage]) -> AsyncIterator[str]:
         try:
@@ -41,7 +41,7 @@ class DashScopeChatModel:
         except ExternalServiceError:
             raise
         except Exception as exc:
-            raise ExternalServiceError("model streaming service unavailable") from exc
+            raise ExternalServiceError("模型流式连接失败，请检查模型配置或稍后重试") from exc
 
 
 class DashScopeEmbeddingModel:
@@ -70,7 +70,7 @@ class DashScopeEmbeddingModel:
         except ExternalServiceError:
             raise
         except Exception as exc:
-            raise ExternalServiceError("embedding service unavailable") from exc
+            raise ExternalServiceError("语义检索服务不可用，已自动降级为本地检索") from exc
 
     async def embed_query(self, text: str) -> list[float]:
         try:
@@ -78,4 +78,4 @@ class DashScopeEmbeddingModel:
         except ExternalServiceError:
             raise
         except Exception as exc:
-            raise ExternalServiceError("embedding service unavailable") from exc
+            raise ExternalServiceError("语义检索服务不可用，已自动降级为本地检索") from exc

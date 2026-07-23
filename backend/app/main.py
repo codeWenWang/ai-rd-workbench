@@ -9,6 +9,7 @@ from app.api import (
     chat_v2,
     diagnostics,
     documents_v2,
+    improvement_tasks,
     memories_v2,
     model_providers,
     projects,
@@ -44,6 +45,7 @@ def create_app(*, settings: Settings | None = None, container: AppContainer | No
     application.include_router(diagnostics.router)
     application.include_router(projects.router)
     application.include_router(artifacts.router)
+    application.include_router(improvement_tasks.router)
     application.include_router(model_providers.router)
     application.include_router(model_providers.models_router)
 

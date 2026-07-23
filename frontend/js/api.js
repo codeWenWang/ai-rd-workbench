@@ -93,14 +93,16 @@ export function parseSSEChunk(text) {
   return { events, remainder };
 }
 
-export async function streamChat(body, onEvent) {
-  const controller = new AbortController();
+export async function streamChat(body, onEvent, { signal } = {}) {
+  const controller = signal ? null : new AbortController();
+  const requestSignal = signal || controller.signal;
   let response;
   try {
     response = await fetch('/api/chat/stream', {
-      method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body), signal: controller.signal,
+      method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body), signal: requestSignal,
     });
   } catch (error) {
+    if (error.name === 'AbortError') throw error;
     throw new ApiError({ code: 'NETWORK_ERROR', message: '无法连接流式问答服务', details: error.message });
   }
   if (!response.ok) {
@@ -127,7 +129,7 @@ export async function streamChat(body, onEvent) {
       for (const item of parsed.events) await onEvent(item.event, item.data);
     }
   } finally { reader.releaseLock(); }
-  return { abort: () => controller.abort() };
+  return { abort: () => controller?.abort() };
 }
 
 export const api = {
@@ -158,6 +160,7 @@ export const api = {
   projects: () => request('/api/projects'),
   project: id => request(`/api/projects/${encodeURIComponent(id)}`),
   createProject: body => request('/api/projects', { method: 'POST', json: body, timeout: 210000 }),
+  updateProject: (id, body) => request(`/api/projects/${encodeURIComponent(id)}`, { method: 'PATCH', json: body }),
   deleteProject: id => request(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   scanProject: id => request(`/api/projects/${encodeURIComponent(id)}/scan`, { method: 'POST', timeout: 180000 }),
   projectFiles: id => request(`/api/projects/${encodeURIComponent(id)}/files`),
@@ -165,6 +168,12 @@ export const api = {
   projectRoutes: id => request(`/api/projects/${encodeURIComponent(id)}/routes`),
   artifacts: id => request(`/api/projects/${encodeURIComponent(id)}/artifacts`),
   generateArtifact: (id, type) => request(`/api/projects/${encodeURIComponent(id)}/artifacts/${encodeURIComponent(type)}`, { method: 'POST', timeout: 120000 }),
+  improvementTasks: projectId => request(`/api/improvement-tasks?${new URLSearchParams(projectId ? { project_id: projectId } : {})}`),
+  improvementTask: id => request(`/api/improvement-tasks/${encodeURIComponent(id)}`),
+  createImprovementTask: body => request('/api/improvement-tasks', { method: 'POST', json: body, timeout: 180000 }),
+  updateImprovementTask: (id, body) => request(`/api/improvement-tasks/${encodeURIComponent(id)}`, { method: 'PATCH', json: body }),
+  reviewImprovementTask: (id, body = {}) => request(`/api/improvement-tasks/${encodeURIComponent(id)}/review`, { method: 'POST', json: body, timeout: 180000 }),
+  deleteImprovementTask: id => request(`/api/improvement-tasks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   modelProviders: () => request('/api/model-providers'),
   createModelProvider: body => request('/api/model-providers', { method: 'POST', json: body }),
   updateModelProvider: (id, body) => request(`/api/model-providers/${encodeURIComponent(id)}`, { method: 'PATCH', json: body }),

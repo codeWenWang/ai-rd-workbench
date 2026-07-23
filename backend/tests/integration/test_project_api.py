@@ -243,6 +243,25 @@ def test_project_scan_artifacts_and_conversation_filter_flow(tmp_path: Path) -> 
     assert conversations["items"][0]["id"] == session["session_id"]
 
 
+def test_project_api_supports_renaming_without_changing_source(tmp_path: Path) -> None:
+    source = tmp_path / "rename-source"
+    source.mkdir()
+    (source / "main.py").write_text("value = 1", encoding="utf-8")
+    client = make_client(tmp_path)
+    created = client.post(
+        "/api/projects", json={"name": "旧项目名", "root_path": str(source)}
+    ).json()
+
+    response = client.patch(
+        f"/api/projects/{created['id']}", json={"name": "外卖管理系统"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "外卖管理系统"
+    assert response.json()["root_path"] == created["root_path"]
+    assert client.get(f"/api/projects/{created['id']}").json()["name"] == "外卖管理系统"
+
+
 def test_model_provider_api_hides_secret_and_platform_docs_are_removed(tmp_path: Path) -> None:
     client = make_client(tmp_path)
 

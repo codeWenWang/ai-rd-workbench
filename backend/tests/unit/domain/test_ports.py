@@ -22,6 +22,7 @@ def test_repository_protocols_expose_required_operations() -> None:
         "add_message",
         "archive",
         "create",
+        "create_or_reuse_empty",
         "delete",
         "get",
         "list",

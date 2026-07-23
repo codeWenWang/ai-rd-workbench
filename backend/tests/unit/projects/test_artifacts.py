@@ -9,7 +9,7 @@ from app.infrastructure.db.repositories import (
     SqliteProjectRepository,
 )
 from app.infrastructure.db.session import Database
-from app.infrastructure.artifacts.mermaid import render_architecture, render_sequence
+from app.infrastructure.artifacts.mermaid import render_architecture, render_flow, render_sequence
 from app.infrastructure.artifacts.api_docs import _fallback_title
 from app.infrastructure.projects.insights import (
     ProjectEndpointInsight,
@@ -62,6 +62,24 @@ def test_generates_four_project_artifacts(
     assert expected_text in artifact.content
     assert artifact.source_revision == projects.get(project.id).source_revision
     assert artifact.status == "ready"
+
+
+def test_flow_uses_standard_start_end_input_output_and_labeled_decision_nodes() -> None:
+    insight = ProjectInsight(
+        project_type="unknown",
+        modules=[],
+        endpoints=[],
+    )
+
+    diagram = render_flow(insight)
+
+    assert diagram.startswith("flowchart TD")
+    assert 'start(["开始"])' in diagram
+    assert 'finish(["结束"])' in diagram
+    assert 'input[/"接收请求"/]' in diagram
+    assert 'has_route{"识别到可验证流程？"}' in diagram
+    assert '-->|"是"|' in diagram
+    assert '-->|"否"|' in diagram
 
 
 def test_rescan_marks_existing_artifact_stale(analyzed_project) -> None:
@@ -158,8 +176,7 @@ def test_java_maven_artifacts_are_module_oriented_and_framework_neutral(tmp_path
     assert "RepositoryController.items" in flow
     assert "Spring MVC" in flow
     assert "handler --> step_0_core" in flow
-    assert "handler --> step_1_storage_file" in flow
-    assert "step_0_core --> step_1_storage_file" not in flow
+    assert "step_0_core --> step_1_storage_file" in flow
     assert "RepositoryController.items" in sequence
     assert "GET /repository/items" in sequence
     assert "**请求路径：** `/repository/items`" in api_docs
@@ -255,7 +272,7 @@ def test_spring_api_docs_are_normalized_and_infer_request_response_examples(tmp_
     assert '"id": 0' in content
     assert "serialVersionUID" not in content
     assert "请求样例：** `/depts/1`" in content
-    assert "`PATCH`" not in content
+    assert "**请求方式：** `PATCH`" in content
     assert "AdminUiController" not in content
 
 
@@ -431,6 +448,25 @@ def test_api_doc_fallback_titles_use_resource_and_crud_semantics() -> None:
     assert _fallback_title("BlobStoresController.check", "POST", "/internal/blob-stores/{id}/check") == "check 操作"
     assert _fallback_title("StatusController.status", "GET", "/internal/status") == "status 查询"
     assert _fallback_title("RepositoryController.put", "PUT", "/repository/{name}/**") == "修改 repository"
+
+
+@pytest.mark.parametrize(
+    ("handler", "method", "path", "expected"),
+    [
+        ("UserController.list", "GET", "/user", "查询用户列表"),
+        ("UserController.get", "GET", "/user/{id}", "查询单个用户"),
+        ("UserController.create", "POST", "/user", "创建用户"),
+        ("UserController.update", "PUT", "/user/{id}", "修改用户（全量）"),
+        ("UserController.patch", "PATCH", "/user/{id}", "局部修改用户"),
+        ("UserController.delete", "DELETE", "/user/{id}", "删除用户"),
+        ("OrderController.items", "GET", "/order/{id}/item", "查询订单下商品明细"),
+        ("OrderController.pay", "POST", "/order/{id}/pay", "订单支付（动作型资源）"),
+    ],
+)
+def test_api_doc_titles_follow_rest_resource_semantics(
+    handler: str, method: str, path: str, expected: str
+) -> None:
+    assert _fallback_title(handler, method, path) == expected
 
 
 def test_large_source_file_is_split_into_embedding_sized_chunks(tmp_path: Path) -> None:

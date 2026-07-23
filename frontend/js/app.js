@@ -1,11 +1,12 @@
-import { initChat } from './chat.js?v=20260722.6';
-import { initDocuments } from './documents.js?v=20260721.7';
-import { initMemories } from './memories.js?v=20260721.7';
-import { initDiagnostics } from './diagnostics.js?v=20260721.7';
-import { initProjects } from './projects.js?v=20260722.6';
-import { initArtifacts } from './artifacts.js?v=20260722.6';
-import { initModels } from './models.js?v=20260721.7';
-import { escapeHtml, renderMarkdown } from './markdown.js?v=20260722.1';
+import { initChat } from './chat.js?v=20260723.3';
+import { initDocuments } from './documents.js?v=20260723.3';
+import { initMemories } from './memories.js?v=20260723.2';
+import { initDiagnostics } from './diagnostics.js?v=20260723.2';
+import { initProjects } from './projects.js?v=20260723.2';
+import { initArtifacts } from './artifacts.js?v=20260723.2';
+import { initModels } from './models.js?v=20260723.2';
+import { initImprovementTasks } from './improvement-tasks.js?v=20260723.2';
+import { escapeHtml, renderMarkdown } from './markdown.js?v=20260723.1';
 
 const eventBus = new EventTarget();
 const el = id => document.getElementById(id);
@@ -300,16 +301,16 @@ async function initialize() {
     }
   });
   const requested = location.hash.slice(1);
-  const allowedViews = ['chat', 'overview', 'architecture', 'flow', 'sequence', 'project-api', 'knowledge', 'memories', 'diagnostics'];
+  const allowedViews = ['chat', 'overview', 'tasks', 'architecture', 'flow', 'sequence', 'project-api', 'knowledge', 'memories', 'diagnostics'];
   if (allowedViews.includes(requested)) switchView(requested);
   const projectResult = await Promise.allSettled([initProjects(ui)]);
   if (projectResult[0].status === 'rejected') console.error('projects', projectResult[0].reason);
   const results = await Promise.allSettled([
     initChat(ui), initArtifacts(ui), initModels(ui),
-    initDocuments(ui), initMemories(ui), initDiagnostics(ui),
+    initDocuments(ui), initMemories(ui), initDiagnostics(ui), initImprovementTasks(ui),
   ]);
   results.forEach((result, index) => {
-    if (result.status === 'rejected') console.error(['chat', 'artifacts', 'models', 'documents', 'memories', 'diagnostics'][index], result.reason);
+    if (result.status === 'rejected') console.error(['chat', 'artifacts', 'models', 'documents', 'memories', 'diagnostics', 'tasks'][index], result.reason);
   });
 }
 

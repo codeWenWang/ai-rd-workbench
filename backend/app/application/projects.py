@@ -50,6 +50,15 @@ class ProjectUseCase:
     def list(self):
         return self.projects.list()
 
+    def update(self, project_id: str, *, name: str):
+        project = self.projects.get(project_id)
+        if not project:
+            raise ResourceNotFound("project not found")
+        normalized = name.strip()
+        if not normalized:
+            raise ValidationError("项目名称不能为空")
+        return self.projects.update(project_id, name=normalized)
+
     def prepare_for_scan(self, project_id: str) -> list[str]:
         project = self.projects.get(project_id)
         if not project:

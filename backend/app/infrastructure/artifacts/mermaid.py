@@ -103,7 +103,13 @@ def _group_summary(names: list[str]) -> tuple[str, str]:
 
 
 def render_flow(insight) -> str:
-    lines = ["flowchart TD", '    client["客户端 / 调用方"]']
+    lines = [
+        "flowchart TD",
+        '    start(["开始"])',
+        '    input[/"接收请求"/]',
+        '    has_route{"识别到可验证流程？"}',
+        "    start --> input --> has_route",
+    ]
     endpoint = _representative_endpoint(insight)
     modules = {module.name: module for module in insight.modules}
     if endpoint:
@@ -115,32 +121,33 @@ def render_flow(insight) -> str:
         lines.append(
             f'    {handler_id}["{_label(endpoint.handler)}<br/>{_label(endpoint.source_path)}:{endpoint.line_number}"]'
         )
-        lines.append(f"    client --> {entry_id} --> {handler_id}")
-        dependency_nodes = []
+        lines.append(f'    has_route -->|"是"| {entry_id} --> {handler_id}')
+        previous = handler_id
         for index, module_name in enumerate(_relevant_dependencies(endpoint, modules)):
             module = modules[module_name]
             node_id = f"step_{index}_{_node_id(module_name)}"
             lines.append(f'    {node_id}["{_label(module.name)} · {_label(module.role)}"]')
-            lines.append(f"    {handler_id} --> {node_id}")
-            dependency_nodes.append(node_id)
-        lines.append('    response["返回响应"]')
-        if dependency_nodes:
-            for node_id in dependency_nodes:
-                lines.append(f"    {node_id} -.-> response")
-        else:
-            lines.append(f"    {handler_id} --> response")
+            lines.append(f"    {previous} --> {node_id}")
+            previous = node_id
+        lines.append('    response[/"返回响应"/]')
+        lines.append(f"    {previous} --> response")
+        lines.append("    response --> finish")
     elif insight.modules:
         ordered = _ordered_modules(insight.modules)
-        previous = "client"
+        previous = "has_route"
         for index, module in enumerate(ordered[:8]):
             node_id = f"module_{index}_{_node_id(module.name)}"
             lines.append(f'    {node_id}["{_label(module.name)} · {_label(module.role)}"]')
-            lines.append(f"    {previous} --> {node_id}")
+            condition = ' -->|"是"| ' if previous == "has_route" else " --> "
+            lines.append(f"    {previous}{condition}{node_id}")
             previous = node_id
-        lines.append('    note["当前静态分析未识别到可验证接口，展示模块主链路"]')
-        lines.append(f"    {previous} -.-> note")
+        lines.append(f'    {previous} --> output[/"输出模块主链路"/] --> finish')
     else:
-        lines.append('    client --> empty["当前静态分析未识别到可验证流程"]')
+        lines.append('    has_route -->|"是"| empty["展示已识别流程"] --> finish')
+    lines.extend([
+        '    has_route -->|"否"| unavailable["说明分析不足"] --> finish',
+        '    finish(["结束"])',
+    ])
     return "\n".join(lines)
 
 

@@ -12,7 +12,7 @@
       document.documentElement.dataset.theme = saved || preferred;
     })();
   </script>
-  <link rel="stylesheet" href="css/style.css?v=20260722.6">
+  <link rel="stylesheet" href="css/style.css?v=20260723.3">
 </head>
 <body>
   <div class="app-shell" id="app-shell">
@@ -38,6 +38,7 @@
       <div class="sidebar-scroll">
         <nav class="primary-nav" aria-label="主导航">
           <button class="nav-item" data-view="overview" title="项目总览"><span class="nav-icon" aria-hidden="true">▦</span><span class="sidebar-label">项目总览</span></button>
+          <button class="nav-item" data-view="tasks" title="研发任务"><span class="nav-icon" aria-hidden="true">✓</span><span class="sidebar-label">研发任务</span><span id="task-count" class="count-badge hidden">0</span></button>
           <button class="nav-item" data-view="knowledge" title="知识库"><span class="nav-icon" aria-hidden="true">▤</span><span class="sidebar-label">知识库</span></button>
           <button class="nav-item" data-view="memories" title="个人记忆"><span class="nav-icon" aria-hidden="true">◎</span><span class="sidebar-label">个人记忆</span><span id="pending-count" class="count-badge hidden">0</span></button>
         </nav>
@@ -91,10 +92,33 @@
             <form id="chat-form" class="composer">
               <label class="sr-only" for="chat-input">输入问题</label>
               <textarea id="chat-input" rows="1" maxlength="4000" placeholder="输入消息" required></textarea>
+              <div class="composer-add">
+                <button id="composer-add-button" class="composer-add-button" type="button" title="添加操作" aria-label="添加操作" aria-expanded="false">＋</button>
+                <div id="composer-add-menu" class="composer-add-menu hidden" role="menu">
+                  <span>项目操作</span>
+                  <button id="quick-create-task" type="button" role="menuitem"><strong>制定改进计划</strong><small>分析影响范围并建立任务</small></button>
+                  <button id="quick-review-task" type="button" role="menuitem"><strong>审查当前修改</strong><small>重扫后按验收标准检查</small></button>
+                  <button id="quick-agent-prompt" type="button" role="menuitem"><strong>生成 Agent 提示词</strong><small>查看可直接交付的实施提示词</small></button>
+                </div>
+              </div>
               <label class="composer-model" title="切换当前模型"><span class="sr-only">当前模型</span><select id="chat-model"><option value="">默认模型</option></select></label>
               <button id="send-message" class="send-btn" type="submit" title="发送" aria-label="发送消息">↑</button>
             </form>
           </div>
+        </div>
+      </section>
+
+      <section class="view content-view tasks-view" id="view-tasks" aria-labelledby="tasks-title">
+        <header class="page-header"><div><h1 id="tasks-title">研发任务</h1><p>从需求规划到修改后验收，持续跟踪项目改进进度</p></div><button id="create-task" class="button primary">＋ 新建任务</button></header>
+        <div id="task-alert" class="inline-alert error hidden" role="alert"></div>
+        <div class="task-workspace">
+          <aside class="task-list-panel" aria-label="研发任务列表">
+            <label class="task-project-filter"><span>项目</span><select id="task-project-filter"><option value="">全部项目</option></select></label>
+            <div id="task-list" class="task-list"></div>
+          </aside>
+          <article id="task-detail" class="task-detail">
+            <div class="empty-state"><strong>选择一项研发任务</strong><span>查看步骤、提示词和审查结果。</span></div>
+          </article>
         </div>
       </section>
 
@@ -196,8 +220,28 @@
     </form>
   </dialog>
 
+  <dialog id="agent-prompt-dialog" class="agent-prompt-dialog">
+    <form method="dialog" id="agent-prompt-form">
+      <header>
+        <div><span class="eyebrow">Agent 提示词</span><h2>查看与编辑</h2></div>
+        <button id="close-agent-prompt" class="icon-btn" value="cancel" type="submit" aria-label="关闭">×</button>
+      </header>
+      <div class="agent-prompt-dialog-body">
+        <p>提示词会保存到当前研发任务，可在复制前按需调整。</p>
+        <div id="agent-prompt-preview" class="agent-prompt-rendered" aria-label="Agent 提示词预览"></div>
+        <textarea id="agent-prompt-editor" class="hidden" spellcheck="false" aria-label="Agent 提示词"></textarea>
+      </div>
+      <div id="agent-prompt-alert" class="inline-alert error hidden" role="alert"></div>
+      <footer>
+        <button id="edit-agent-prompt" class="button" type="button">编辑</button>
+        <button id="copy-agent-prompt-dialog" class="button" type="button">复制</button>
+        <button id="save-agent-prompt" class="button primary hidden" value="default" type="submit">保存</button>
+      </footer>
+    </form>
+  </dialog>
+
   <template id="loading-row-template"><tr><td colspan="6"><div class="loading-line">正在加载…</div></td></tr></template>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-  <script type="module" src="js/app.js?v=20260722.6"></script>
+  <script type="module" src="js/app.js?v=20260723.4"></script>
 </body>
 </html>
